@@ -22,7 +22,7 @@ data class LoginRequest(val email: String, val password: String)
 data class RefreshRequest(@Json(name = "refresh_token") val refreshToken: String)
 data class AuthResponse(val token: String, @Json(name = "refresh_token") val refreshToken: String, val user: UserDto)
 data class RefreshResponse(val token: String, @Json(name = "refresh_token") val refreshToken: String, @Json(name = "session_id") val sessionId: String)
-data class UserDto(val id: String, val email: String, @Json(name = "display_name") val displayName: String, val timezone: String)
+data class UserDto(val id: String, val email: String, @Json(name = "display_name") val displayName: String, val timezone: String = "UTC")
 
 data class TaskDto(
     val id: String, @Json(name = "owner_id") val ownerId: String, @Json(name = "project_id") val projectId: String?,
