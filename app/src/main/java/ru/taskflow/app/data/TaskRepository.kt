@@ -49,8 +49,33 @@ class TaskRepository(private val database: TaskFlowDatabase) {
         return createLocalTask(column.ownerId, column.id, title)
     }
 
+    suspend fun completeLocalTask(taskId: String) {
+        val current = checkNotNull(database.taskDao().find(taskId)) { "Задача не найдена" }
+        if (current.deletedAt != null || current.status == "done") return
+        val doneColumn = checkNotNull(database.kanbanColumnDao().byStatus("done")) { "Сначала дождитесь синхронизации колонок" }
+        val updated = current.copy(columnId = doneColumn.id, status = "done", updatedAt = Instant.now().toString())
+        enqueueUpdate(updated, mapOf("column_id" to updated.columnId, "status" to "done", "expected_version" to current.version))
+    }
+
+    suspend fun deleteLocalTask(taskId: String) {
+        val current = checkNotNull(database.taskDao().find(taskId)) { "Задача не найдена" }
+        if (current.deletedAt != null) return
+        val deleted = current.copy(deletedAt = Instant.now().toString(), updatedAt = Instant.now().toString())
+        database.withTransaction {
+            database.taskDao().upsert(deleted)
+            database.mutationDao().insert(PendingMutationEntity(UUID.randomUUID().toString(), "delete", taskId, null, System.currentTimeMillis()))
+        }
+    }
+
     suspend fun pendingMutations(limit: Int) = database.mutationDao().nextBatch(limit)
     suspend fun removeMutations(ids: List<String>) = database.mutationDao().delete(ids)
+
+    private suspend fun enqueueUpdate(task: TaskEntity, body: Map<String, Any?>) {
+        database.withTransaction {
+            database.taskDao().upsert(task)
+            database.mutationDao().insert(PendingMutationEntity(UUID.randomUUID().toString(), "update", task.id, moshi.adapter(Map::class.java).toJson(body), System.currentTimeMillis()))
+        }
+    }
 
     private companion object {
         const val SYNC_CURSOR_KEY = "main"

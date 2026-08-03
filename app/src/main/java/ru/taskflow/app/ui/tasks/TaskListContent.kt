@@ -8,6 +8,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -17,12 +19,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Delete
 import ru.taskflow.app.data.local.TaskEntity
 import ru.taskflow.app.ui.components.EmptyState
 import ru.taskflow.app.ui.theme.TaskFlowSpace
 
 @Composable
-fun TaskListContent(tasks: List<TaskEntity>, emptyTitle: String, emptyDescription: String, onCreate: ((String) -> Unit)? = null) {
+fun TaskListContent(tasks: List<TaskEntity>, emptyTitle: String, emptyDescription: String, onCreate: ((String) -> Unit)? = null, onComplete: (String) -> Unit, onDelete: (String) -> Unit) {
     var title by remember { mutableStateOf("") }
     Column(verticalArrangement = Arrangement.spacedBy(TaskFlowSpace.sm)) {
         if (onCreate != null) {
@@ -37,6 +42,10 @@ fun TaskListContent(tasks: List<TaskEntity>, emptyTitle: String, emptyDescriptio
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(TaskFlowSpace.md), verticalArrangement = Arrangement.spacedBy(TaskFlowSpace.xs)) {
                         Text(task.title, style = MaterialTheme.typography.titleMedium)
+                        androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            if (task.status != "done") IconButton(onClick = { onComplete(task.id) }) { Icon(Icons.Outlined.Check, "Завершить") }
+                            IconButton(onClick = { onDelete(task.id) }) { Icon(Icons.Outlined.Delete, "Удалить") }
+                        }
                         if (task.description.isNotBlank()) Text(task.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(task.priority.replaceFirstChar(Char::uppercase), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     }

@@ -29,6 +29,8 @@ interface KanbanColumnDao {
     fun observeActive(): Flow<List<KanbanColumnEntity>>
     @Query("SELECT * FROM kanban_columns WHERE deletedAt IS NULL AND semanticStatus = 'inbox' ORDER BY position LIMIT 1")
     suspend fun inbox(): KanbanColumnEntity?
+    @Query("SELECT * FROM kanban_columns WHERE deletedAt IS NULL AND semanticStatus = :status ORDER BY position LIMIT 1")
+    suspend fun byStatus(status: String): KanbanColumnEntity?
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertAll(columns: List<KanbanColumnEntity>)
 }
 
