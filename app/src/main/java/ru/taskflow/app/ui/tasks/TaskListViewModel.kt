@@ -17,6 +17,7 @@ import ru.taskflow.app.data.sync.TaskSyncScheduler
 
 class TaskListViewModel(private val tasks: TaskRepository, private val sync: SyncRepository, private val appContext: Context) : ViewModel() {
     val taskList = tasks.tasks.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val projects = tasks.projects.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val conflicts = tasks.conflicts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     var syncing = false
         private set
@@ -48,8 +49,8 @@ class TaskListViewModel(private val tasks: TaskRepository, private val sync: Syn
         viewModelScope.launch { runCatching { tasks.deleteLocalTask(taskId) }.onSuccess { TaskSyncScheduler.enqueue(appContext) }; refresh() }
     }
 
-    fun updateTask(taskId: String, title: String, priority: String) {
-        viewModelScope.launch { runCatching { tasks.updateLocalTask(taskId, title, priority) }.onSuccess { TaskSyncScheduler.enqueue(appContext) }; refresh() }
+    fun updateTask(taskId: String, title: String, priority: String, description: String, projectId: String?, scheduledDate: String?, dueAt: String?) {
+        viewModelScope.launch { runCatching { tasks.updateLocalTask(taskId, title, priority, description, projectId, scheduledDate, dueAt) }.onSuccess { TaskSyncScheduler.enqueue(appContext) }; refresh() }
     }
 
     fun keepServerVersion(mutationId: String) {

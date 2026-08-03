@@ -40,6 +40,7 @@ import ru.taskflow.app.ui.tasks.TaskListContent
 import ru.taskflow.app.ui.tasks.TaskListViewModel
 import ru.taskflow.app.ui.tasks.TaskListViewModelFactory
 import ru.taskflow.app.ui.tasks.ConflictDialog
+import ru.taskflow.app.ui.projects.ProjectListContent
 import ru.taskflow.app.ui.components.EmptyState
 import ru.taskflow.app.ui.theme.TaskFlowSpace
 
@@ -61,6 +62,7 @@ fun TaskFlowApp() {
     }
     val taskListViewModel: TaskListViewModel = viewModel(factory = TaskListViewModelFactory(TaskFlowDatabase.get(context), TokenStore(context), context))
     val tasks by taskListViewModel.taskList.collectAsStateWithLifecycle()
+    val projects by taskListViewModel.projects.collectAsStateWithLifecycle()
     val conflicts by taskListViewModel.conflicts.collectAsStateWithLifecycle()
     var destination by remember { mutableStateOf(Destination.Today) }
     val wideLayout = LocalConfiguration.current.screenWidthDp >= 720
@@ -71,7 +73,7 @@ fun TaskFlowApp() {
                     NavigationRailItem(selected = destination == item, onClick = { destination = item }, icon = { Icon(item.icon, item.label) }, label = { Text(item.label) })
                 }
             }
-            TaskFlowContent(destination, PaddingValues(), tasks, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask, taskListViewModel::updateTask)
+            TaskFlowContent(destination, PaddingValues(), tasks, projects, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask, taskListViewModel::updateTask)
         }
     } else {
         Scaffold(bottomBar = {
@@ -80,7 +82,7 @@ fun TaskFlowApp() {
                     NavigationBarItem(selected = destination == item, onClick = { destination = item }, icon = { Icon(item.icon, item.label) }, label = { Text(item.label) })
                 }
             }
-        }) { padding -> TaskFlowContent(destination, padding, tasks, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask, taskListViewModel::updateTask) }
+        }) { padding -> TaskFlowContent(destination, padding, tasks, projects, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask, taskListViewModel::updateTask) }
     }
     conflicts.firstOrNull()?.let { conflict ->
         ConflictDialog(conflict, onKeepServer = { taskListViewModel.keepServerVersion(conflict.mutationId) }, onKeepLocal = { taskListViewModel.keepLocalVersion(conflict) })
@@ -89,16 +91,16 @@ fun TaskFlowApp() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TaskFlowContent(destination: Destination, padding: PaddingValues, tasks: List<ru.taskflow.app.data.local.TaskEntity>, onCreateInboxTask: (String) -> Unit, onCompleteTask: (String) -> Unit, onDeleteTask: (String) -> Unit, onUpdateTask: (String, String, String) -> Unit) {
+private fun TaskFlowContent(destination: Destination, padding: PaddingValues, tasks: List<ru.taskflow.app.data.local.TaskEntity>, projects: List<ru.taskflow.app.data.local.ProjectEntity>, onCreateInboxTask: (String) -> Unit, onCompleteTask: (String) -> Unit, onDeleteTask: (String) -> Unit, onUpdateTask: (String, String, String, String, String?, String?, String?) -> Unit) {
     Scaffold(topBar = { TopAppBar(title = { Text(destination.label, style = MaterialTheme.typography.titleLarge) }) }) { contentPadding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(contentPadding).padding(horizontal = TaskFlowSpace.md),
             verticalArrangement = Arrangement.Center,
         ) {
             when (destination) {
-                Destination.Today -> TaskListContent(tasks.filter { it.scheduledDate == java.time.LocalDate.now().toString() }, "На сегодня задач нет", "Запланируйте задачу, чтобы увидеть её здесь.", onComplete = onCompleteTask, onDelete = onDeleteTask, onUpdate = onUpdateTask)
-                Destination.Inbox -> TaskListContent(tasks.filter { it.status == "inbox" }, "Входящие пусты", "Новые несортированные задачи появятся здесь.", onCreateInboxTask, onCompleteTask, onDeleteTask, onUpdateTask)
-                Destination.Projects -> EmptyState("Проекты", "Экран проектов появится в следующем шаге.")
+                Destination.Today -> TaskListContent(tasks.filter { it.scheduledDate == java.time.LocalDate.now().toString() }, projects, "На сегодня задач нет", "Запланируйте задачу, чтобы увидеть её здесь.", onComplete = onCompleteTask, onDelete = onDeleteTask, onUpdate = onUpdateTask)
+                Destination.Inbox -> TaskListContent(tasks.filter { it.status == "inbox" }, projects, "Входящие пусты", "Новые несортированные задачи появятся здесь.", onCreateInboxTask, onCompleteTask, onDeleteTask, onUpdateTask)
+                Destination.Projects -> ProjectListContent(projects, tasks)
                 Destination.More -> EmptyState("Ещё", "Настройки и дополнительные инструменты появятся позже.")
             }
         }

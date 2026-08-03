@@ -17,6 +17,7 @@ import java.util.UUID
 
 class TaskRepository(private val database: TaskFlowDatabase) {
     val tasks = database.taskDao().observeActive()
+    val projects = database.projectDao().observeActive()
     val conflicts = database.taskConflictDao().observeAll()
 
     suspend fun syncCursor(): String = database.syncStateDao().cursor(SYNC_CURSOR_KEY) ?: FIRST_SYNC_CURSOR
@@ -69,13 +70,13 @@ class TaskRepository(private val database: TaskFlowDatabase) {
         }
     }
 
-    suspend fun updateLocalTask(taskId: String, title: String, priority: String) {
+    suspend fun updateLocalTask(taskId: String, title: String, priority: String, description: String, projectId: String?, scheduledDate: String?, dueAt: String?) {
         val current = checkNotNull(database.taskDao().find(taskId)) { "Задача не найдена" }
         require(title.isNotBlank()) { "Введите название задачи" }
         require(priority in PRIORITIES) { "Некорректный приоритет" }
         if (current.deletedAt != null) return
-        val updated = current.copy(title = title.trim(), priority = priority, updatedAt = Instant.now().toString())
-        enqueueUpdate(updated, mapOf("title" to updated.title, "priority" to updated.priority, "expected_version" to current.version))
+        val updated = current.copy(title = title.trim(), priority = priority, description = description.trim(), projectId = projectId, scheduledDate = scheduledDate, dueAt = dueAt, updatedAt = Instant.now().toString())
+        enqueueUpdate(updated, mapOf("title" to updated.title, "priority" to updated.priority, "description" to updated.description, "project_id" to updated.projectId, "scheduled_date" to updated.scheduledDate, "due_at" to updated.dueAt, "expected_version" to current.version))
     }
 
     suspend fun pendingMutations(limit: Int) = database.mutationDao().nextBatch(limit)
