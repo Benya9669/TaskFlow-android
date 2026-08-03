@@ -42,6 +42,19 @@ class SessionViewModel(private val repository: SessionRepository) : ViewModel() 
 
     fun dismissVerification() { _state.value = SessionUiState(isSignedIn = false) }
 
+    fun verifyEmail(serverUrl: String?, token: String?) {
+        if (serverUrl.isNullOrBlank() || token.isNullOrBlank()) {
+            _state.value = _state.value.copy(error = "Ссылка подтверждения не содержит сервера или токена")
+            return
+        }
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isLoading = true, error = null)
+            runCatching { repository.verifyEmail(serverUrl, token) }
+                .onSuccess { _state.value = SessionUiState(isSignedIn = true) }
+                .onFailure { _state.value = SessionUiState(isSignedIn = false, error = it.message ?: "Не удалось подтвердить email") }
+        }
+    }
+
     fun logout() { repository.logout(); _state.value = SessionUiState(isSignedIn = false) }
 }
 

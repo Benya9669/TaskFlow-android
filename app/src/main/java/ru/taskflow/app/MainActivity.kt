@@ -20,7 +20,14 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             TaskFlowTheme {
-                Surface { TaskFlowApp(intent.getStringExtra(Intent.EXTRA_TEXT), intent.data?.lastPathSegment) }
+                Surface {
+                    TaskFlowApp(
+                        sharedText = intent.getStringExtra(Intent.EXTRA_TEXT),
+                        taskIdFromLink = intent.data?.takeIf { it.host == "task" }?.lastPathSegment,
+                        verificationServerUrl = intent.data?.takeIf { it.host == "verify" }?.getQueryParameter("server"),
+                        verificationToken = intent.data?.takeIf { it.host == "verify" }?.getQueryParameter("token"),
+                    )
+                }
             }
         }
     }

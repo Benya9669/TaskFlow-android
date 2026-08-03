@@ -2,6 +2,7 @@ package ru.taskflow.app.data.session
 
 import ru.taskflow.app.data.remote.LoginRequest
 import ru.taskflow.app.data.remote.RegisterRequest
+import ru.taskflow.app.data.remote.VerifyEmailRequest
 import ru.taskflow.app.data.remote.TaskFlowApiFactory
 
 class SessionRepository(private val tokenStore: TokenStore) {
@@ -17,6 +18,13 @@ class SessionRepository(private val tokenStore: TokenStore) {
     suspend fun register(serverUrl: String, email: String, password: String, displayName: String): String {
         val normalizedUrl = normalizeServerUrl(serverUrl)
         return TaskFlowApiFactory(tokenStore).create(normalizedUrl).register(RegisterRequest(email.trim(), password, displayName.trim())).email
+    }
+
+    suspend fun verifyEmail(serverUrl: String, token: String) {
+        val normalizedUrl = normalizeServerUrl(serverUrl)
+        val response = TaskFlowApiFactory(tokenStore).create(normalizedUrl).verifyEmail(VerifyEmailRequest(token))
+        tokenStore.saveServerUrl(normalizedUrl)
+        tokenStore.save(SessionTokens(response.token, response.refreshToken))
     }
 
     fun logout() = tokenStore.clear()

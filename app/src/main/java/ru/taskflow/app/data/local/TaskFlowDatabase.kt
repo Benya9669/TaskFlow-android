@@ -27,12 +27,12 @@ abstract class TaskFlowDatabase : RoomDatabase() {
 
         fun get(context: Context): TaskFlowDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, TaskFlowDatabase::class.java, "taskflow.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(migration1To2)
                 .build()
                 .also { instance = it }
         }
 
-        private val MIGRATION_1_2 = object : Migration(1, 2) {
+        val migration1To2 = object : Migration(1, 2) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("CREATE TABLE IF NOT EXISTS task_conflicts (mutationId TEXT NOT NULL, taskId TEXT NOT NULL, localBodyJson TEXT NOT NULL, serverTitle TEXT NOT NULL, serverPriority TEXT NOT NULL, createdAt INTEGER NOT NULL, PRIMARY KEY(mutationId))")
             }

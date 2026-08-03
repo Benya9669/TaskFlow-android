@@ -15,6 +15,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import ru.taskflow.app.data.local.TaskFlowDatabase
+import ru.taskflow.app.data.local.KanbanColumnEntity
 import ru.taskflow.app.data.remote.KanbanColumnDto
 import ru.taskflow.app.data.remote.MutationBatch
 import ru.taskflow.app.data.remote.MutationBatchResponse
@@ -25,6 +26,8 @@ import ru.taskflow.app.data.remote.SyncResponse
 import ru.taskflow.app.data.remote.TaskDto
 import ru.taskflow.app.data.remote.TaskFlowApi
 import ru.taskflow.app.data.remote.TaskFlowApiFactory
+import ru.taskflow.app.data.remote.MutationDto
+import ru.taskflow.app.data.remote.MutationResultDto
 import ru.taskflow.app.data.session.SessionTokens
 import ru.taskflow.app.data.session.TokenStore
 
@@ -49,6 +52,7 @@ class SyncRepositoryTest {
             }
             override suspend fun login(request: ru.taskflow.app.data.remote.LoginRequest) = throw UnsupportedOperationException()
             override suspend fun register(request: ru.taskflow.app.data.remote.RegisterRequest) = throw UnsupportedOperationException()
+            override suspend fun verifyEmail(request: ru.taskflow.app.data.remote.VerifyEmailRequest) = throw UnsupportedOperationException()
             override suspend fun refresh(request: RefreshRequest) = throw UnsupportedOperationException()
             override suspend fun sendMutations(request: MutationBatch) = MutationBatchResponse(emptyList())
         }
@@ -81,6 +85,31 @@ class SyncRepositoryTest {
             assertEquals(2, syncAttempts)
             assertEquals("new-access", store.read()?.accessToken)
         } finally { server.shutdown() }
+    }
+
+    @Test fun retryingSameMutationIdRemovesItAfterSuccessfulReplay() = runBlocking {
+        database.kanbanColumnDao().upsertAll(listOf(KanbanColumnEntity("column", "owner", "Inbox", "#000000", "inbox", 0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", 1, null)))
+        val task = repository.createInboxTask("Retry task")
+        val mutation = repository.pendingMutations(10).single()
+        val api = object : TaskFlowApi {
+            var sends = 0
+            override suspend fun sendMutations(request: MutationBatch): MutationBatchResponse {
+                sends++
+                assertEquals(mutation.id, request.mutations.single().id)
+                if (sends == 1) throw java.io.IOException("offline")
+                return MutationBatchResponse(listOf(MutationResultDto(mutation.id, 200, emptyMap())))
+            }
+            override suspend fun sync(since: String, cursor: String?, snapshot: String?, limit: Int) = page("snapshot", "cursor", false, null, emptyList())
+            override suspend fun login(request: ru.taskflow.app.data.remote.LoginRequest) = throw UnsupportedOperationException()
+            override suspend fun register(request: ru.taskflow.app.data.remote.RegisterRequest) = throw UnsupportedOperationException()
+            override suspend fun verifyEmail(request: ru.taskflow.app.data.remote.VerifyEmailRequest) = throw UnsupportedOperationException()
+            override suspend fun refresh(request: RefreshRequest) = throw UnsupportedOperationException()
+        }
+        runCatching { SyncRepository(api, repository).pushAndPull() }
+        SyncRepository(api, repository).pushAndPull()
+        assertEquals(2, api.sends)
+        assertEquals(emptyList<Any>(), repository.pendingMutations(10))
+        assertEquals(task.id, database.taskDao().find(task.id)?.id)
     }
 
     private fun task(id: String) = TaskDto(id, "owner", null, "column", id, "", "inbox", "normal", null, null, null, 0, null, emptyList(), emptyList(), "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", 1, null)

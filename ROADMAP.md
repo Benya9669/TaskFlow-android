@@ -28,9 +28,9 @@
 
 - [x] Retrofit/Moshi-контракт для login, refresh, `/sync` и task mutation batch по OpenAPI.
 - [x] Безопасное хранение access и rotating refresh token через Android Keystore.
-- [~] Login, восстановление локальной сессии и регистрация с ожиданием подтверждения email; открытие verification link остаётся.
+- [x] Login, восстановление локальной сессии, регистрация и email verification через `taskflow://verify` link.
 - [x] Room-модель задач, проектов, колонок, durable outbox и sync-курсора.
-- [ ] Версионированные миграции Room без удаления пользовательских данных.
+- [x] Версионированная миграция Room v1-to-v2 без удаления задач и durable outbox, проверена instrumented-тестом.
 
 ### Offline-first синхронизация
 
@@ -38,7 +38,7 @@
 - [x] WorkManager: unique network job, экспоненциальный retry, token refresh, пакетная отправка и pull sync после локальных изменений.
 - [x] Pull sync задач, проектов и колонок: пагинация `snapshot` / `next_cursor`, sync-курсор и tombstone-удаления.
 - [x] Экран и сценарий явного разрешения version conflict: выбор серверной версии или повтор локальной с актуальной версией.
-- [~] Инструментационные тесты offline create/update/delete, server-version conflict, pagination и refresh проходят на AVD; повтор mutation остаётся.
+- [x] Инструментационные тесты offline create/update/delete, idempotent mutation retry, server-version conflict, pagination и refresh проходят на AVD.
 
 ### Пользовательские сценарии beta
 

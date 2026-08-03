@@ -53,10 +53,13 @@ private enum class Destination(val label: String, val icon: ImageVector) {
 }
 
 @Composable
-fun TaskFlowApp(sharedText: String? = null, taskIdFromLink: String? = null) {
+fun TaskFlowApp(sharedText: String? = null, taskIdFromLink: String? = null, verificationServerUrl: String? = null, verificationToken: String? = null) {
     val context = LocalContext.current.applicationContext
     val sessionViewModel: SessionViewModel = viewModel(factory = SessionViewModelFactory(TokenStore(context)))
     val session by sessionViewModel.state.collectAsStateWithLifecycle()
+    LaunchedEffect(verificationServerUrl, verificationToken) {
+        if (verificationServerUrl != null || verificationToken != null) sessionViewModel.verifyEmail(verificationServerUrl, verificationToken)
+    }
     if (!session.isSignedIn) {
         LoginScreen(session, sessionViewModel::login, sessionViewModel::register, sessionViewModel::dismissVerification)
         return
