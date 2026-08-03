@@ -3,6 +3,7 @@ package ru.taskflow.app.data
 import ru.taskflow.app.data.remote.TaskFlowApi
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 
 class SyncRepository(private val api: TaskFlowApi, private val tasks: TaskRepository) {
     suspend fun pull() {
@@ -29,13 +30,22 @@ class SyncRepository(private val api: TaskFlowApi, private val tasks: TaskReposi
                     },
                 ),
             )
+            val byId = pending.associateBy { it.id }
             tasks.removeMutations(response.mutations.filter { it.status in 200..299 }.map { it.id })
+            response.mutations.filter { it.status == 409 }.forEach { result ->
+                val mutation = byId[result.id] ?: return@forEach
+                val currentTask = result.response["current_task"] as? Map<*, *> ?: return@forEach
+                val normalizedTask = currentTask.entries.associate { (key, value) -> key.toString() to value }
+                taskAdapter.fromJson(mapAdapter.toJson(normalizedTask))?.let { tasks.saveConflict(mutation, it) }
+            }
         }
         pull()
     }
 
     private companion object {
         const val MAX_MUTATIONS = 100
-        val moshi = Moshi.Builder().build()
+        val moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
+        val mapAdapter = moshi.adapter<Map<String, Any?>>(Types.newParameterizedType(Map::class.java, String::class.java, Any::class.java))
+        val taskAdapter = moshi.adapter(ru.taskflow.app.data.remote.TaskDto::class.java)
     }
 }

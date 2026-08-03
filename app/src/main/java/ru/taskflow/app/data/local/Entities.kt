@@ -71,6 +71,16 @@ data class SyncStateEntity(
     val cursor: String,
 )
 
+@Entity(tableName = "task_conflicts")
+data class TaskConflictEntity(
+    @PrimaryKey val mutationId: String,
+    val taskId: String,
+    val localBodyJson: String,
+    val serverTitle: String,
+    val serverPriority: String,
+    val createdAt: Long,
+)
+
 class TaskFlowConverters {
     private val moshi = Moshi.Builder().build()
     private val intList = moshi.adapter<List<Int>>(Types.newParameterizedType(List::class.java, Int::class.javaObjectType))

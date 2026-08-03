@@ -46,3 +46,10 @@ interface SyncStateDao {
     @Query("SELECT cursor FROM sync_state WHERE key = :key") suspend fun cursor(key: String): String?
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun put(state: SyncStateEntity)
 }
+
+@Dao
+interface TaskConflictDao {
+    @Query("SELECT * FROM task_conflicts ORDER BY createdAt") fun observeAll(): Flow<List<TaskConflictEntity>>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insert(conflict: TaskConflictEntity)
+    @Query("DELETE FROM task_conflicts WHERE mutationId = :mutationId") suspend fun delete(mutationId: String)
+}

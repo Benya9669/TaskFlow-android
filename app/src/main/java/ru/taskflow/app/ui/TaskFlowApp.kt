@@ -39,6 +39,7 @@ import ru.taskflow.app.ui.auth.SessionViewModelFactory
 import ru.taskflow.app.ui.tasks.TaskListContent
 import ru.taskflow.app.ui.tasks.TaskListViewModel
 import ru.taskflow.app.ui.tasks.TaskListViewModelFactory
+import ru.taskflow.app.ui.tasks.ConflictDialog
 import ru.taskflow.app.ui.components.EmptyState
 import ru.taskflow.app.ui.theme.TaskFlowSpace
 
@@ -60,6 +61,7 @@ fun TaskFlowApp() {
     }
     val taskListViewModel: TaskListViewModel = viewModel(factory = TaskListViewModelFactory(TaskFlowDatabase.get(context), TokenStore(context), context))
     val tasks by taskListViewModel.taskList.collectAsStateWithLifecycle()
+    val conflicts by taskListViewModel.conflicts.collectAsStateWithLifecycle()
     var destination by remember { mutableStateOf(Destination.Today) }
     val wideLayout = LocalConfiguration.current.screenWidthDp >= 720
     if (wideLayout) {
@@ -79,6 +81,9 @@ fun TaskFlowApp() {
                 }
             }
         }) { padding -> TaskFlowContent(destination, padding, tasks, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask, taskListViewModel::updateTask) }
+    }
+    conflicts.firstOrNull()?.let { conflict ->
+        ConflictDialog(conflict, onKeepServer = { taskListViewModel.keepServerVersion(conflict.mutationId) }, onKeepLocal = { taskListViewModel.keepLocalVersion(conflict) })
     }
 }
 
