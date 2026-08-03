@@ -1,6 +1,7 @@
 package ru.taskflow.app.data.session
 
 import ru.taskflow.app.data.remote.LoginRequest
+import ru.taskflow.app.data.remote.RegisterRequest
 import ru.taskflow.app.data.remote.TaskFlowApiFactory
 
 class SessionRepository(private val tokenStore: TokenStore) {
@@ -11,6 +12,11 @@ class SessionRepository(private val tokenStore: TokenStore) {
         val response = TaskFlowApiFactory(tokenStore).create(normalizedUrl).login(LoginRequest(email.trim(), password))
         tokenStore.saveServerUrl(normalizedUrl)
         tokenStore.save(SessionTokens(response.token, response.refreshToken))
+    }
+
+    suspend fun register(serverUrl: String, email: String, password: String, displayName: String): String {
+        val normalizedUrl = normalizeServerUrl(serverUrl)
+        return TaskFlowApiFactory(tokenStore).create(normalizedUrl).register(RegisterRequest(email.trim(), password, displayName.trim())).email
     }
 
     fun logout() = tokenStore.clear()

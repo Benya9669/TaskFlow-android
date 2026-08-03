@@ -8,7 +8,7 @@ import kotlinx.coroutines.launch
 import ru.taskflow.app.data.session.SessionRepository
 import ru.taskflow.app.data.session.TokenStore
 
-data class SessionUiState(val isSignedIn: Boolean, val isLoading: Boolean = false, val error: String? = null)
+data class SessionUiState(val isSignedIn: Boolean, val isLoading: Boolean = false, val error: String? = null, val verificationEmail: String? = null)
 
 class SessionViewModel(private val repository: SessionRepository) : ViewModel() {
     private val _state = MutableStateFlow(SessionUiState(repository.hasSession()))
@@ -26,6 +26,21 @@ class SessionViewModel(private val repository: SessionRepository) : ViewModel() 
                 .onFailure { _state.value = SessionUiState(isSignedIn = false, error = it.message ?: "Не удалось войти") }
         }
     }
+
+    fun register(serverUrl: String, email: String, password: String, displayName: String) {
+        if (serverUrl.isBlank() || email.isBlank() || password.isBlank() || displayName.isBlank()) {
+            _state.value = _state.value.copy(error = "Заполните все поля")
+            return
+        }
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isLoading = true, error = null, verificationEmail = null)
+            runCatching { repository.register(serverUrl, email, password, displayName) }
+                .onSuccess { _state.value = SessionUiState(isSignedIn = false, verificationEmail = it) }
+                .onFailure { _state.value = SessionUiState(isSignedIn = false, error = it.message ?: "Не удалось зарегистрироваться") }
+        }
+    }
+
+    fun dismissVerification() { _state.value = SessionUiState(isSignedIn = false) }
 
     fun logout() { repository.logout(); _state.value = SessionUiState(isSignedIn = false) }
 }

@@ -14,6 +14,7 @@ import ru.taskflow.app.data.local.TaskConflictEntity
 import ru.taskflow.app.data.remote.TaskFlowApiFactory
 import ru.taskflow.app.data.session.TokenStore
 import ru.taskflow.app.data.sync.TaskSyncScheduler
+import ru.taskflow.app.data.reminders.TaskReminderWorker
 
 class TaskListViewModel(private val tasks: TaskRepository, private val sync: SyncRepository, private val appContext: Context) : ViewModel() {
     val taskList = tasks.tasks.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -50,7 +51,7 @@ class TaskListViewModel(private val tasks: TaskRepository, private val sync: Syn
     }
 
     fun updateTask(taskId: String, title: String, priority: String, description: String, projectId: String?, scheduledDate: String?, dueAt: String?) {
-        viewModelScope.launch { runCatching { tasks.updateLocalTask(taskId, title, priority, description, projectId, scheduledDate, dueAt) }.onSuccess { TaskSyncScheduler.enqueue(appContext) }; refresh() }
+        viewModelScope.launch { runCatching { tasks.updateLocalTask(taskId, title, priority, description, projectId, scheduledDate, dueAt) }.onSuccess { TaskSyncScheduler.enqueue(appContext); TaskReminderWorker.schedule(appContext, taskId, title, dueAt) }; refresh() }
     }
 
     fun keepServerVersion(mutationId: String) {

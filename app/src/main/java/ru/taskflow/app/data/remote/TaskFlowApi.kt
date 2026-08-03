@@ -8,6 +8,7 @@ import retrofit2.http.Query
 
 interface TaskFlowApi {
     @POST("auth/login") suspend fun login(@Body request: LoginRequest): AuthResponse
+    @POST("auth/register") suspend fun register(@Body request: RegisterRequest): RegistrationResponse
     @POST("auth/refresh") suspend fun refresh(@Body request: RefreshRequest): RefreshResponse
     @GET("sync") suspend fun sync(
         @Query("since") since: String,
@@ -19,6 +20,8 @@ interface TaskFlowApi {
 }
 
 data class LoginRequest(val email: String, val password: String)
+data class RegisterRequest(val email: String, val password: String, @Json(name = "display_name") val displayName: String)
+data class RegistrationResponse(@Json(name = "verification_required") val verificationRequired: Boolean, val email: String)
 data class RefreshRequest(@Json(name = "refresh_token") val refreshToken: String)
 data class AuthResponse(val token: String, @Json(name = "refresh_token") val refreshToken: String, val user: UserDto)
 data class RefreshResponse(val token: String, @Json(name = "refresh_token") val refreshToken: String, @Json(name = "session_id") val sessionId: String)

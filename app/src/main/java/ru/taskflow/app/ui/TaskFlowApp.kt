@@ -21,6 +21,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,19 +53,22 @@ private enum class Destination(val label: String, val icon: ImageVector) {
 }
 
 @Composable
-fun TaskFlowApp() {
+fun TaskFlowApp(sharedText: String? = null, taskIdFromLink: String? = null) {
     val context = LocalContext.current.applicationContext
     val sessionViewModel: SessionViewModel = viewModel(factory = SessionViewModelFactory(TokenStore(context)))
     val session by sessionViewModel.state.collectAsStateWithLifecycle()
     if (!session.isSignedIn) {
-        LoginScreen(session) { serverUrl, email, password -> sessionViewModel.login(serverUrl, email, password) }
+        LoginScreen(session, sessionViewModel::login, sessionViewModel::register, sessionViewModel::dismissVerification)
         return
     }
     val taskListViewModel: TaskListViewModel = viewModel(factory = TaskListViewModelFactory(TaskFlowDatabase.get(context), TokenStore(context), context))
     val tasks by taskListViewModel.taskList.collectAsStateWithLifecycle()
     val projects by taskListViewModel.projects.collectAsStateWithLifecycle()
     val conflicts by taskListViewModel.conflicts.collectAsStateWithLifecycle()
-    var destination by remember { mutableStateOf(Destination.Today) }
+    var destination by remember { mutableStateOf(if (taskIdFromLink != null) Destination.Inbox else Destination.Today) }
+    LaunchedEffect(sharedText) {
+        sharedText?.trim()?.takeIf(String::isNotBlank)?.let(taskListViewModel::createInboxTask)
+    }
     val wideLayout = LocalConfiguration.current.screenWidthDp >= 720
     if (wideLayout) {
         androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
@@ -73,7 +77,7 @@ fun TaskFlowApp() {
                     NavigationRailItem(selected = destination == item, onClick = { destination = item }, icon = { Icon(item.icon, item.label) }, label = { Text(item.label) })
                 }
             }
-            TaskFlowContent(destination, PaddingValues(), tasks, projects, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask, taskListViewModel::updateTask)
+            TaskFlowContent(destination, PaddingValues(), tasks, projects, taskIdFromLink, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask, taskListViewModel::updateTask)
         }
     } else {
         Scaffold(bottomBar = {
@@ -82,7 +86,7 @@ fun TaskFlowApp() {
                     NavigationBarItem(selected = destination == item, onClick = { destination = item }, icon = { Icon(item.icon, item.label) }, label = { Text(item.label) })
                 }
             }
-        }) { padding -> TaskFlowContent(destination, padding, tasks, projects, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask, taskListViewModel::updateTask) }
+        }) { padding -> TaskFlowContent(destination, padding, tasks, projects, taskIdFromLink, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask, taskListViewModel::updateTask) }
     }
     conflicts.firstOrNull()?.let { conflict ->
         ConflictDialog(conflict, onKeepServer = { taskListViewModel.keepServerVersion(conflict.mutationId) }, onKeepLocal = { taskListViewModel.keepLocalVersion(conflict) })
@@ -91,7 +95,7 @@ fun TaskFlowApp() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TaskFlowContent(destination: Destination, padding: PaddingValues, tasks: List<ru.taskflow.app.data.local.TaskEntity>, projects: List<ru.taskflow.app.data.local.ProjectEntity>, onCreateInboxTask: (String) -> Unit, onCompleteTask: (String) -> Unit, onDeleteTask: (String) -> Unit, onUpdateTask: (String, String, String, String, String?, String?, String?) -> Unit) {
+private fun TaskFlowContent(destination: Destination, padding: PaddingValues, tasks: List<ru.taskflow.app.data.local.TaskEntity>, projects: List<ru.taskflow.app.data.local.ProjectEntity>, taskIdFromLink: String?, onCreateInboxTask: (String) -> Unit, onCompleteTask: (String) -> Unit, onDeleteTask: (String) -> Unit, onUpdateTask: (String, String, String, String, String?, String?, String?) -> Unit) {
     Scaffold(topBar = { TopAppBar(title = { Text(destination.label, style = MaterialTheme.typography.titleLarge) }) }) { contentPadding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(contentPadding).padding(horizontal = TaskFlowSpace.md),
@@ -99,7 +103,7 @@ private fun TaskFlowContent(destination: Destination, padding: PaddingValues, ta
         ) {
             when (destination) {
                 Destination.Today -> TaskListContent(tasks.filter { it.scheduledDate == java.time.LocalDate.now().toString() }, projects, "На сегодня задач нет", "Запланируйте задачу, чтобы увидеть её здесь.", onComplete = onCompleteTask, onDelete = onDeleteTask, onUpdate = onUpdateTask)
-                Destination.Inbox -> TaskListContent(tasks.filter { it.status == "inbox" }, projects, "Входящие пусты", "Новые несортированные задачи появятся здесь.", onCreateInboxTask, onCompleteTask, onDeleteTask, onUpdateTask)
+                Destination.Inbox -> TaskListContent(tasks.filter { it.status == "inbox" }.filter { taskIdFromLink == null || it.id == taskIdFromLink }, projects, "Входящие пусты", if (taskIdFromLink == null) "Новые несортированные задачи появятся здесь." else "Задача из ссылки ещё не синхронизирована.", onCreateInboxTask, onCompleteTask, onDeleteTask, onUpdateTask)
                 Destination.Projects -> ProjectListContent(projects, tasks)
                 Destination.More -> EmptyState("Ещё", "Настройки и дополнительные инструменты появятся позже.")
             }
