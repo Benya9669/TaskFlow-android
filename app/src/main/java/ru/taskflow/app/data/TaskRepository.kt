@@ -67,6 +67,15 @@ class TaskRepository(private val database: TaskFlowDatabase) {
         }
     }
 
+    suspend fun updateLocalTask(taskId: String, title: String, priority: String) {
+        val current = checkNotNull(database.taskDao().find(taskId)) { "Задача не найдена" }
+        require(title.isNotBlank()) { "Введите название задачи" }
+        require(priority in PRIORITIES) { "Некорректный приоритет" }
+        if (current.deletedAt != null) return
+        val updated = current.copy(title = title.trim(), priority = priority, updatedAt = Instant.now().toString())
+        enqueueUpdate(updated, mapOf("title" to updated.title, "priority" to updated.priority, "expected_version" to current.version))
+    }
+
     suspend fun pendingMutations(limit: Int) = database.mutationDao().nextBatch(limit)
     suspend fun removeMutations(ids: List<String>) = database.mutationDao().delete(ids)
 
@@ -80,6 +89,7 @@ class TaskRepository(private val database: TaskFlowDatabase) {
     private companion object {
         const val SYNC_CURSOR_KEY = "main"
         const val FIRST_SYNC_CURSOR = "1970-01-01T00:00:00.000Z"
+        val PRIORITIES = setOf("low", "normal", "high", "urgent")
         val moshi = Moshi.Builder().build()
     }
 }

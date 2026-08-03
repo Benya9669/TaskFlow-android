@@ -69,7 +69,7 @@ fun TaskFlowApp() {
                     NavigationRailItem(selected = destination == item, onClick = { destination = item }, icon = { Icon(item.icon, item.label) }, label = { Text(item.label) })
                 }
             }
-            TaskFlowContent(destination, PaddingValues(), tasks, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask)
+            TaskFlowContent(destination, PaddingValues(), tasks, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask, taskListViewModel::updateTask)
         }
     } else {
         Scaffold(bottomBar = {
@@ -78,21 +78,21 @@ fun TaskFlowApp() {
                     NavigationBarItem(selected = destination == item, onClick = { destination = item }, icon = { Icon(item.icon, item.label) }, label = { Text(item.label) })
                 }
             }
-        }) { padding -> TaskFlowContent(destination, padding, tasks, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask) }
+        }) { padding -> TaskFlowContent(destination, padding, tasks, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask, taskListViewModel::updateTask) }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TaskFlowContent(destination: Destination, padding: PaddingValues, tasks: List<ru.taskflow.app.data.local.TaskEntity>, onCreateInboxTask: (String) -> Unit, onCompleteTask: (String) -> Unit, onDeleteTask: (String) -> Unit) {
+private fun TaskFlowContent(destination: Destination, padding: PaddingValues, tasks: List<ru.taskflow.app.data.local.TaskEntity>, onCreateInboxTask: (String) -> Unit, onCompleteTask: (String) -> Unit, onDeleteTask: (String) -> Unit, onUpdateTask: (String, String, String) -> Unit) {
     Scaffold(topBar = { TopAppBar(title = { Text(destination.label, style = MaterialTheme.typography.titleLarge) }) }) { contentPadding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(contentPadding).padding(horizontal = TaskFlowSpace.md),
             verticalArrangement = Arrangement.Center,
         ) {
             when (destination) {
-                Destination.Today -> TaskListContent(tasks.filter { it.scheduledDate == java.time.LocalDate.now().toString() }, "На сегодня задач нет", "Запланируйте задачу, чтобы увидеть её здесь.", onComplete = onCompleteTask, onDelete = onDeleteTask)
-                Destination.Inbox -> TaskListContent(tasks.filter { it.status == "inbox" }, "Входящие пусты", "Новые несортированные задачи появятся здесь.", onCreateInboxTask, onCompleteTask, onDeleteTask)
+                Destination.Today -> TaskListContent(tasks.filter { it.scheduledDate == java.time.LocalDate.now().toString() }, "На сегодня задач нет", "Запланируйте задачу, чтобы увидеть её здесь.", onComplete = onCompleteTask, onDelete = onDeleteTask, onUpdate = onUpdateTask)
+                Destination.Inbox -> TaskListContent(tasks.filter { it.status == "inbox" }, "Входящие пусты", "Новые несортированные задачи появятся здесь.", onCreateInboxTask, onCompleteTask, onDeleteTask, onUpdateTask)
                 Destination.Projects -> EmptyState("Проекты", "Экран проектов появится в следующем шаге.")
                 Destination.More -> EmptyState("Ещё", "Настройки и дополнительные инструменты появятся позже.")
             }

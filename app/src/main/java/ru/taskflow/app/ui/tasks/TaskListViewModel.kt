@@ -44,6 +44,10 @@ class TaskListViewModel(private val tasks: TaskRepository, private val sync: Syn
         viewModelScope.launch { runCatching { tasks.deleteLocalTask(taskId) }; refresh() }
     }
 
+    fun updateTask(taskId: String, title: String, priority: String) {
+        viewModelScope.launch { runCatching { tasks.updateLocalTask(taskId, title, priority) }; refresh() }
+    }
+
     fun today(tasks: List<TaskEntity>, date: String): List<TaskEntity> = tasks.filter { it.scheduledDate == date }
     fun inbox(tasks: List<TaskEntity>): List<TaskEntity> = tasks.filter { it.status == "inbox" }
 }
