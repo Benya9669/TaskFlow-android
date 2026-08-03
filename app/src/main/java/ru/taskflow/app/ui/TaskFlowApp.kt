@@ -58,7 +58,7 @@ fun TaskFlowApp() {
         LoginScreen(session) { serverUrl, email, password -> sessionViewModel.login(serverUrl, email, password) }
         return
     }
-    val taskListViewModel: TaskListViewModel = viewModel(factory = TaskListViewModelFactory(TaskFlowDatabase.get(context), TokenStore(context)))
+    val taskListViewModel: TaskListViewModel = viewModel(factory = TaskListViewModelFactory(TaskFlowDatabase.get(context), TokenStore(context), context))
     val tasks by taskListViewModel.taskList.collectAsStateWithLifecycle()
     var destination by remember { mutableStateOf(Destination.Today) }
     val wideLayout = LocalConfiguration.current.screenWidthDp >= 720

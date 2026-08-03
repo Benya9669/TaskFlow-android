@@ -35,7 +35,7 @@
 ### Offline-first синхронизация
 
 - [x] Durable outbox и пакетная отправка idempotent task mutations при запуске и ручном refresh с последующим pull sync.
-- [ ] WorkManager: retry, token refresh, пакетная отправка и pull sync.
+- [x] WorkManager: unique network job, экспоненциальный retry, token refresh, пакетная отправка и pull sync после локальных изменений.
 - [x] Pull sync задач, проектов и колонок: пагинация `snapshot` / `next_cursor`, sync-курсор и tombstone-удаления.
 - [ ] Экран и сценарий явного разрешения version conflict.
 - [ ] Тесты offline create/update/delete, повтора, pagination, refresh и conflict.
