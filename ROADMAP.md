@@ -38,7 +38,7 @@
 - [x] WorkManager: unique network job, экспоненциальный retry, token refresh, пакетная отправка и pull sync после локальных изменений.
 - [x] Pull sync задач, проектов и колонок: пагинация `snapshot` / `next_cursor`, sync-курсор и tombstone-удаления.
 - [x] Экран и сценарий явного разрешения version conflict: выбор серверной версии или повтор локальной с актуальной версией.
-- [ ] Тесты offline create/update/delete, повтора, pagination, refresh и conflict.
+- [~] Инструментационные тесты offline create/update/delete и server-version conflict проходят на AVD; повтор mutation, pagination и refresh остаются.
 
 ### Пользовательские сценарии beta
 
