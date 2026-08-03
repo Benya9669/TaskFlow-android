@@ -28,12 +28,14 @@ class TaskSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineW
             val tasks = TaskRepository(TaskFlowDatabase.get(applicationContext))
             SyncRepository(TaskFlowApiFactory(tokenStore).create(serverUrl), tasks).pushAndPull()
             Result.success()
-        } catch (_: IOException) {
-            Result.retry()
-        } catch (error: HttpException) {
-            if (error.code() >= 500) Result.retry() else Result.failure()
+        } catch (error: Exception) {
+            if (SyncFailurePolicy.shouldRetry(error)) Result.retry() else Result.failure()
         }
     }
+}
+
+object SyncFailurePolicy {
+    fun shouldRetry(error: Exception): Boolean = error is IOException || (error as? HttpException)?.code()?.let { it >= 500 } == true
 }
 
 object TaskSyncScheduler {

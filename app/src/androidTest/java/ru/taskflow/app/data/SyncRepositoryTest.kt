@@ -1,0 +1,89 @@
+package ru.taskflow.app.data
+
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import ru.taskflow.app.data.local.TaskFlowDatabase
+import ru.taskflow.app.data.remote.KanbanColumnDto
+import ru.taskflow.app.data.remote.MutationBatch
+import ru.taskflow.app.data.remote.MutationBatchResponse
+import ru.taskflow.app.data.remote.ProjectDto
+import ru.taskflow.app.data.remote.RefreshRequest
+import ru.taskflow.app.data.remote.RefreshResponse
+import ru.taskflow.app.data.remote.SyncResponse
+import ru.taskflow.app.data.remote.TaskDto
+import ru.taskflow.app.data.remote.TaskFlowApi
+import ru.taskflow.app.data.remote.TaskFlowApiFactory
+import ru.taskflow.app.data.session.SessionTokens
+import ru.taskflow.app.data.session.TokenStore
+
+@RunWith(AndroidJUnit4::class)
+class SyncRepositoryTest {
+    private lateinit var database: TaskFlowDatabase
+    private lateinit var repository: TaskRepository
+
+    @Before fun setUp() {
+        database = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), TaskFlowDatabase::class.java).allowMainThreadQueries().build()
+        repository = TaskRepository(database)
+    }
+
+    @After fun tearDown() = database.close()
+
+    @Test fun pullFollowsPaginationAndStoresFinalCursor() = runBlocking {
+        val api = object : TaskFlowApi {
+            var calls = 0
+            override suspend fun sync(since: String, cursor: String?, snapshot: String?, limit: Int): SyncResponse {
+                calls++
+                return if (calls == 1) page("snapshot-1", "cursor-1", true, "next-1", listOf(task("one"))) else page("snapshot-1", "cursor-2", false, null, listOf(task("two")))
+            }
+            override suspend fun login(request: ru.taskflow.app.data.remote.LoginRequest) = throw UnsupportedOperationException()
+            override suspend fun register(request: ru.taskflow.app.data.remote.RegisterRequest) = throw UnsupportedOperationException()
+            override suspend fun refresh(request: RefreshRequest) = throw UnsupportedOperationException()
+            override suspend fun sendMutations(request: MutationBatch) = MutationBatchResponse(emptyList())
+        }
+        SyncRepository(api, repository).pull()
+        assertEquals(2, api.calls)
+        assertEquals("cursor-2", repository.syncCursor())
+        assertEquals(listOf("one", "two"), database.taskDao().observeActive().first().map { it.id }.sorted())
+    }
+
+    @Test fun refreshesTokenAfterUnauthorizedSyncRequest() = runBlocking {
+        val server = MockWebServer()
+        var syncAttempts = 0
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = when {
+                request.path?.startsWith("/api/v1/sync") == true -> {
+                    syncAttempts++
+                    if (syncAttempts == 1) MockResponse().setResponseCode(401) else MockResponse().setBody(syncJson())
+                }
+                request.path == "/api/v1/auth/refresh" -> MockResponse().setBody("{\"token\":\"new-access\",\"refresh_token\":\"new-refresh\",\"session_id\":\"session\"}")
+                else -> MockResponse().setResponseCode(404)
+            }
+        }
+        server.start()
+        try {
+            val store = TokenStore(ApplicationProvider.getApplicationContext())
+            store.clear()
+            store.saveServerUrl(server.url("/api/v1/").toString())
+            store.save(SessionTokens("old-access", "old-refresh"))
+            SyncRepository(TaskFlowApiFactory(store).create(store.serverUrl()!!), repository).pull()
+            assertEquals(2, syncAttempts)
+            assertEquals("new-access", store.read()?.accessToken)
+        } finally { server.shutdown() }
+    }
+
+    private fun task(id: String) = TaskDto(id, "owner", null, "column", id, "", "inbox", "normal", null, null, null, 0, null, emptyList(), emptyList(), "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", 1, null)
+    private fun page(snapshot: String, cursor: String, hasMore: Boolean, next: String?, tasks: List<TaskDto>) = SyncResponse(snapshot, cursor, hasMore, next, tasks, emptyList<ProjectDto>(), emptyList<KanbanColumnDto>())
+    private fun syncJson() = "{\"snapshot\":\"snapshot\",\"cursor\":\"cursor\",\"has_more\":false,\"next_cursor\":null,\"tasks\":[],\"projects\":[],\"kanban_columns\":[]}"
+}
