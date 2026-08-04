@@ -52,7 +52,7 @@ Android-клиент развивается отдельно от `../web` и и
 
 ### Главные сценарии
 
-- [ ] Переработать «Сегодня» и «Входящие»: группировка, ясные счётчики, completed section, pull-to-refresh и feedback после sync.
+- [~] «Сегодня» и «Входящие» показывают active/completed sections, счётчик и ручную sync action; pull-to-refresh и feedback после sync остаются.
 - [ ] Заменить текстовые ISO-поля даты и срока на Material date/time pickers, добавить clear date и overdue presentation.
 - [ ] Улучшить быстрый ввод: autofocus, submit с IME, быстрый выбор приоритета/даты и snackbar с Undo после delete/complete.
 - [ ] Сделать task detail/editor полноценным bottom sheet или отдельным экраном с валидацией, сохранением и unsaved-change handling.

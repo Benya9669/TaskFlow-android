@@ -68,6 +68,7 @@ fun TaskFlowApp(sharedText: String? = null, taskIdFromLink: String? = null, veri
     val tasks by taskListViewModel.taskList.collectAsStateWithLifecycle()
     val projects by taskListViewModel.projects.collectAsStateWithLifecycle()
     val conflicts by taskListViewModel.conflicts.collectAsStateWithLifecycle()
+    val syncing by taskListViewModel.syncing.collectAsStateWithLifecycle()
     var destination by remember { mutableStateOf(if (taskIdFromLink != null) Destination.Inbox else Destination.Today) }
     LaunchedEffect(sharedText) {
         sharedText?.trim()?.takeIf(String::isNotBlank)?.let(taskListViewModel::createInboxTask)
@@ -80,7 +81,7 @@ fun TaskFlowApp(sharedText: String? = null, taskIdFromLink: String? = null, veri
                     NavigationRailItem(selected = destination == item, onClick = { destination = item }, icon = { Icon(item.icon, item.label) }, label = { Text(item.label) })
                 }
             }
-            TaskFlowContent(destination, PaddingValues(), tasks, projects, taskIdFromLink, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask, taskListViewModel::updateTask)
+            TaskFlowContent(destination, PaddingValues(), tasks, projects, taskIdFromLink, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask, taskListViewModel::updateTask, taskListViewModel::refresh, syncing)
         }
     } else {
         Scaffold(bottomBar = {
@@ -89,7 +90,7 @@ fun TaskFlowApp(sharedText: String? = null, taskIdFromLink: String? = null, veri
                     NavigationBarItem(selected = destination == item, onClick = { destination = item }, icon = { Icon(item.icon, item.label) }, label = { Text(item.label) })
                 }
             }
-        }) { padding -> TaskFlowContent(destination, padding, tasks, projects, taskIdFromLink, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask, taskListViewModel::updateTask) }
+        }) { padding -> TaskFlowContent(destination, padding, tasks, projects, taskIdFromLink, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask, taskListViewModel::updateTask, taskListViewModel::refresh, syncing) }
     }
     conflicts.firstOrNull()?.let { conflict ->
         ConflictDialog(conflict, onKeepServer = { taskListViewModel.keepServerVersion(conflict.mutationId) }, onKeepLocal = { taskListViewModel.keepLocalVersion(conflict) })
@@ -98,15 +99,15 @@ fun TaskFlowApp(sharedText: String? = null, taskIdFromLink: String? = null, veri
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TaskFlowContent(destination: Destination, padding: PaddingValues, tasks: List<ru.taskflow.app.data.local.TaskEntity>, projects: List<ru.taskflow.app.data.local.ProjectEntity>, taskIdFromLink: String?, onCreateInboxTask: (String) -> Unit, onCompleteTask: (String) -> Unit, onDeleteTask: (String) -> Unit, onUpdateTask: (String, String, String, String, String?, String?, String?) -> Unit) {
+private fun TaskFlowContent(destination: Destination, padding: PaddingValues, tasks: List<ru.taskflow.app.data.local.TaskEntity>, projects: List<ru.taskflow.app.data.local.ProjectEntity>, taskIdFromLink: String?, onCreateInboxTask: (String) -> Unit, onCompleteTask: (String) -> Unit, onDeleteTask: (String) -> Unit, onUpdateTask: (String, String, String, String, String?, String?, String?) -> Unit, onRefresh: () -> Unit, syncing: Boolean) {
     Scaffold(topBar = { TopAppBar(title = { Text(destination.label, style = MaterialTheme.typography.titleLarge) }) }) { contentPadding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(contentPadding).padding(horizontal = TaskFlowSpace.md),
             verticalArrangement = Arrangement.Center,
         ) {
             when (destination) {
-                Destination.Today -> TaskListContent(tasks.filter { it.scheduledDate == java.time.LocalDate.now().toString() }, projects, "На сегодня задач нет", "Запланируйте задачу, чтобы увидеть её здесь.", onComplete = onCompleteTask, onDelete = onDeleteTask, onUpdate = onUpdateTask)
-                Destination.Inbox -> TaskListContent(tasks.filter { it.status == "inbox" }.filter { taskIdFromLink == null || it.id == taskIdFromLink }, projects, "Входящие пусты", if (taskIdFromLink == null) "Новые несортированные задачи появятся здесь." else "Задача из ссылки ещё не синхронизирована.", onCreateInboxTask, onCompleteTask, onDeleteTask, onUpdateTask)
+                Destination.Today -> TaskListContent(tasks.filter { it.scheduledDate == java.time.LocalDate.now().toString() }, projects, "На сегодня задач нет", "Запланируйте задачу, чтобы увидеть её здесь.", onComplete = onCompleteTask, onDelete = onDeleteTask, onUpdate = onUpdateTask, onRefresh = onRefresh, syncing = syncing)
+                Destination.Inbox -> TaskListContent(tasks.filter { it.status == "inbox" }.filter { taskIdFromLink == null || it.id == taskIdFromLink }, projects, "Входящие пусты", if (taskIdFromLink == null) "Новые несортированные задачи появятся здесь." else "Задача из ссылки ещё не синхронизирована.", onCreateInboxTask, onCompleteTask, onDeleteTask, onUpdateTask, onRefresh, syncing)
                 Destination.Projects -> ProjectListContent(projects, tasks)
                 Destination.More -> EmptyState("Ещё", "Настройки и дополнительные инструменты появятся позже.")
             }

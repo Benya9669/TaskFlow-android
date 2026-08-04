@@ -3,6 +3,7 @@ package ru.taskflow.app.ui.tasks
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,6 +12,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -25,13 +27,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Refresh
 import ru.taskflow.app.data.local.TaskEntity
 import ru.taskflow.app.data.local.ProjectEntity
 import ru.taskflow.app.ui.components.EmptyState
 import ru.taskflow.app.ui.theme.TaskFlowSpace
 
 @Composable
-fun TaskListContent(tasks: List<TaskEntity>, projects: List<ProjectEntity>, emptyTitle: String, emptyDescription: String, onCreate: ((String) -> Unit)? = null, onComplete: (String) -> Unit, onDelete: (String) -> Unit, onUpdate: (String, String, String, String, String?, String?, String?) -> Unit) {
+fun TaskListContent(tasks: List<TaskEntity>, projects: List<ProjectEntity>, emptyTitle: String, emptyDescription: String, onCreate: ((String) -> Unit)? = null, onComplete: (String) -> Unit, onDelete: (String) -> Unit, onUpdate: (String, String, String, String, String?, String?, String?) -> Unit, onRefresh: () -> Unit = {}, syncing: Boolean = false) {
     var title by remember { mutableStateOf("") }
     var editingTask by remember { mutableStateOf<TaskEntity?>(null) }
     var projectFilter by remember { mutableStateOf<String?>(null) }
@@ -42,7 +45,15 @@ fun TaskListContent(tasks: List<TaskEntity>, projects: List<ProjectEntity>, empt
             (priorityFilter == null || task.priority == priorityFilter) &&
             (statusFilter == null || task.status == statusFilter)
     }
+    val activeTasks = filteredTasks.filter { it.status != "done" }
+    val completedTasks = filteredTasks.filter { it.status == "done" }
     Column(verticalArrangement = Arrangement.spacedBy(TaskFlowSpace.sm)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("${activeTasks.size} активных", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            IconButton(onClick = onRefresh, enabled = !syncing) {
+                if (syncing) CircularProgressIndicator() else Icon(Icons.Outlined.Refresh, "Синхронизировать")
+            }
+        }
         if (onCreate != null) {
             OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text("Новая задача") }, singleLine = true)
             Button(onClick = { onCreate(title); title = "" }, enabled = title.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Добавить во входящие") }
@@ -52,7 +63,7 @@ fun TaskListContent(tasks: List<TaskEntity>, projects: List<ProjectEntity>, empt
         EmptyState(emptyTitle, emptyDescription)
     } else {
         LazyColumn(verticalArrangement = Arrangement.spacedBy(TaskFlowSpace.sm)) {
-            items(filteredTasks, key = TaskEntity::id) { task ->
+            items(activeTasks, key = TaskEntity::id) { task ->
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(TaskFlowSpace.md), verticalArrangement = Arrangement.spacedBy(TaskFlowSpace.xs)) {
                         Text(task.title, style = MaterialTheme.typography.titleMedium)
@@ -63,6 +74,20 @@ fun TaskListContent(tasks: List<TaskEntity>, projects: List<ProjectEntity>, empt
                         }
                         if (task.description.isNotBlank()) Text(task.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(task.priority.replaceFirstChar(Char::uppercase), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+            if (completedTasks.isNotEmpty()) {
+                item { Text("Завершено (${completedTasks.size})", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                items(completedTasks, key = TaskEntity::id) { task ->
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(TaskFlowSpace.md), verticalArrangement = Arrangement.spacedBy(TaskFlowSpace.xs)) {
+                            Text(task.title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                IconButton(onClick = { editingTask = task }) { Icon(Icons.Outlined.Edit, "Редактировать") }
+                                IconButton(onClick = { onDelete(task.id) }) { Icon(Icons.Outlined.Delete, "Удалить") }
+                            }
+                        }
                     }
                 }
             }

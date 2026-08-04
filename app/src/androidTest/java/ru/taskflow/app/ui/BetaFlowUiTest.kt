@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -44,6 +45,21 @@ class BetaFlowUiTest {
         compose.onNodeWithText("Новая задача").performClick().performTextInput("Работать офлайн")
         compose.onNodeWithText("Добавить во входящие").performClick()
         compose.runOnIdle { assertEquals("Работать офлайн", createdTitle) }
+    }
+
+    @Test fun taskListSeparatesCompletedTasksAndRefreshes() {
+        var refreshes = 0
+        val active = TaskEntity("active", "owner", null, "column", "Активная", "", "inbox", "normal", null, null, null, 0, null, emptyList(), emptyList(), "", "", 1, null)
+        val completed = active.copy(id = "done", title = "Готовая", status = "done")
+        compose.setContent {
+            MaterialTheme {
+                TaskListContent(listOf(active, completed), emptyList(), "", "", onComplete = {}, onDelete = {}, onUpdate = { _, _, _, _, _, _, _ -> }, onRefresh = { refreshes++ })
+            }
+        }
+        compose.onNodeWithText("1 активных").assertIsDisplayed()
+        compose.onNodeWithText("Завершено (1)").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Синхронизировать").performClick()
+        compose.runOnIdle { assertEquals(1, refreshes) }
     }
 
     @Test fun conflictDialogKeepsLocalVersion() {

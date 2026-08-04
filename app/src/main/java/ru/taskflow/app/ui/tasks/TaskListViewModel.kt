@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import android.content.Context
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.taskflow.app.data.SyncRepository
@@ -20,17 +21,17 @@ class TaskListViewModel(private val tasks: TaskRepository, private val sync: Syn
     val taskList = tasks.tasks.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val projects = tasks.projects.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val conflicts = tasks.conflicts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-    var syncing = false
-        private set
+    private val _syncing = MutableStateFlow(false)
+    val syncing = _syncing
 
     init { refresh() }
 
     fun refresh() {
-        if (syncing) return
+        if (_syncing.value) return
         viewModelScope.launch {
-            syncing = true
+            _syncing.value = true
             runCatching { sync.pushAndPull() }
-            syncing = false
+            _syncing.value = false
         }
     }
 
