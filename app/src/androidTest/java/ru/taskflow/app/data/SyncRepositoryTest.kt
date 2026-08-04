@@ -112,6 +112,7 @@ class SyncRepositoryTest {
         assertEquals(task.id, database.taskDao().find(task.id)?.id)
     }
 
+
     private fun task(id: String) = TaskDto(id, "owner", null, "column", id, "", "inbox", "normal", null, null, null, 0, null, emptyList(), emptyList(), "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", 1, null)
     private fun page(snapshot: String, cursor: String, hasMore: Boolean, next: String?, tasks: List<TaskDto>) = SyncResponse(snapshot, cursor, hasMore, next, tasks, emptyList<ProjectDto>(), emptyList<KanbanColumnDto>())
     private fun syncJson() = "{\"snapshot\":\"snapshot\",\"cursor\":\"cursor\",\"has_more\":false,\"next_cursor\":null,\"tasks\":[],\"projects\":[],\"kanban_columns\":[]}"
