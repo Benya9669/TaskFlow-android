@@ -53,7 +53,7 @@ Android-клиент развивается отдельно от `../web` и и
 ### Главные сценарии
 
 - [~] «Сегодня» и «Входящие» показывают active/completed sections, счётчик и ручную sync action; pull-to-refresh и feedback после sync остаются.
-- [ ] Заменить текстовые ISO-поля даты и срока на Material date/time pickers, добавить clear date и overdue presentation.
+- [~] ISO-поля планирования и срока заменены Material date/time pickers с clear date; overdue presentation остаётся.
 - [ ] Улучшить быстрый ввод: autofocus, submit с IME, быстрый выбор приоритета/даты и snackbar с Undo после delete/complete.
 - [ ] Сделать task detail/editor полноценным bottom sheet или отдельным экраном с валидацией, сохранением и unsaved-change handling.
 - [ ] Реализовать поиск задач по title и description в локальной базе.

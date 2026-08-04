@@ -62,6 +62,18 @@ class BetaFlowUiTest {
         compose.runOnIdle { assertEquals(1, refreshes) }
     }
 
+    @Test fun taskEditorOpensDatePickerInsteadOfIsoInput() {
+        val task = TaskEntity("task", "owner", null, "column", "Запланировать встречу", "", "inbox", "normal", null, null, null, 0, null, emptyList(), emptyList(), "", "", 1, null)
+        compose.setContent {
+            MaterialTheme {
+                TaskListContent(listOf(task), emptyList(), "", "", onComplete = {}, onDelete = {}, onUpdate = { _, _, _, _, _, _, _ -> })
+            }
+        }
+        compose.onNodeWithContentDescription("Редактировать").performClick()
+        compose.onNodeWithText("Запланировать").performClick()
+        compose.onNodeWithText("Готово").assertIsDisplayed()
+    }
+
     @Test fun conflictDialogKeepsLocalVersion() {
         var resolution: String? = null
         val conflict = TaskConflictEntity("mutation", "task", "{\"title\":\"Локальная\",\"priority\":\"high\"}", "Серверная", "normal", 1L)
