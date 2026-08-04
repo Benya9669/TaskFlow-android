@@ -99,7 +99,7 @@ fun TaskFlowApp(sharedText: String? = null, taskIdFromLink: String? = null, veri
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TaskFlowContent(destination: Destination, padding: PaddingValues, tasks: List<ru.taskflow.app.data.local.TaskEntity>, projects: List<ru.taskflow.app.data.local.ProjectEntity>, taskIdFromLink: String?, onCreateInboxTask: (String) -> Unit, onCompleteTask: (String) -> Unit, onDeleteTask: (String) -> Unit, onUpdateTask: (String, String, String, String, String?, String?, String?) -> Unit, onRefresh: () -> Unit, syncing: Boolean) {
+private fun TaskFlowContent(destination: Destination, padding: PaddingValues, tasks: List<ru.taskflow.app.data.local.TaskEntity>, projects: List<ru.taskflow.app.data.local.ProjectEntity>, taskIdFromLink: String?, onCreateInboxTask: (String, String, String?) -> Unit, onCompleteTask: (String) -> Unit, onDeleteTask: (String) -> Unit, onUpdateTask: (String, String, String, String, String?, String?, String?) -> Unit, onRefresh: () -> Unit, syncing: Boolean) {
     Scaffold(topBar = { TopAppBar(title = { Text(destination.label, style = MaterialTheme.typography.titleLarge) }) }) { contentPadding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(contentPadding).padding(horizontal = TaskFlowSpace.md),

@@ -35,10 +35,10 @@ class TaskListViewModel(private val tasks: TaskRepository, private val sync: Syn
         }
     }
 
-    fun createInboxTask(title: String) {
+    fun createInboxTask(title: String, priority: String = "normal", scheduledDate: String? = null) {
         if (title.isBlank()) return
         viewModelScope.launch {
-            runCatching { tasks.createInboxTask(title) }.onSuccess { TaskSyncScheduler.enqueue(appContext) }
+            runCatching { tasks.createInboxTask(title, priority, scheduledDate) }.onSuccess { TaskSyncScheduler.enqueue(appContext) }
             refresh()
         }
     }

@@ -31,15 +31,16 @@ class TaskRepository(private val database: TaskFlowDatabase) {
         }
     }
 
-    suspend fun createLocalTask(ownerId: String, columnId: String, title: String): TaskEntity {
+    suspend fun createLocalTask(ownerId: String, columnId: String, title: String, priority: String = "normal", scheduledDate: String? = null): TaskEntity {
         val now = Instant.now().toString()
         val task = TaskEntity(
             id = UUID.randomUUID().toString(), ownerId = ownerId, projectId = null, columnId = columnId,
-            title = title.trim(), description = "", status = "inbox", priority = "normal", scheduledDate = null,
+            title = title.trim(), description = "", status = "inbox", priority = priority, scheduledDate = scheduledDate,
             dueAt = null, estimatedMinutes = null, kanbanPosition = Int.MAX_VALUE, recurrence = null,
             reminderOffsets = emptyList(), tags = emptyList(), createdAt = now, updatedAt = now, version = 1, deletedAt = null,
         )
-        val body = mapOf("title" to task.title, "column_id" to task.columnId, "status" to task.status, "priority" to task.priority)
+        require(priority in PRIORITIES) { "Некорректный приоритет" }
+        val body = mapOf("title" to task.title, "column_id" to task.columnId, "status" to task.status, "priority" to task.priority, "scheduled_date" to task.scheduledDate)
         database.withTransaction {
             database.taskDao().upsert(task)
             database.mutationDao().insert(PendingMutationEntity(UUID.randomUUID().toString(), "create", task.id, moshi.adapter(Map::class.java).toJson(body), System.currentTimeMillis()))
@@ -47,9 +48,9 @@ class TaskRepository(private val database: TaskFlowDatabase) {
         return task
     }
 
-    suspend fun createInboxTask(title: String): TaskEntity {
+    suspend fun createInboxTask(title: String, priority: String = "normal", scheduledDate: String? = null): TaskEntity {
         val column = checkNotNull(database.kanbanColumnDao().inbox()) { "Сначала дождитесь синхронизации колонок" }
-        return createLocalTask(column.ownerId, column.id, title)
+        return createLocalTask(column.ownerId, column.id, title, priority, scheduledDate)
     }
 
     suspend fun completeLocalTask(taskId: String) {
