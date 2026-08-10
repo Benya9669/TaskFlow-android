@@ -142,10 +142,58 @@ class BetaFlowUiTest {
         val done = KanbanColumnEntity("done", "owner", "Завершено", "#16A34A", "done", 1, "", "", 1, null)
         val task = TaskEntity("task", "owner", null, "inbox", "Карточка канбан", "", "inbox", "normal", null, null, null, 0, null, emptyList(), emptyList(), "", "", 1, null)
         var movedTo: String? = null
-        compose.setContent { MaterialTheme { KanbanBoardContent(listOf(inbox, done), listOf(task), emptyList()) { _, column -> movedTo = column.id } } }
+        compose.setContent {
+            MaterialTheme {
+                KanbanBoardContent(
+                    columns = listOf(inbox, done), tasks = listOf(task), projects = emptyList(), busy = false, syncing = false,
+                    syncError = null, onDismissError = {}, onRefresh = {}, onMove = { _, column, _ -> movedTo = column.id },
+                    onCreateTask = { _, _, _ -> }, onCreateColumn = { _, _, _ -> }, onUpdateColumn = { _, _, _, _ -> },
+                    onReorderColumns = {}, onDeleteColumn = { _, _ -> },
+                )
+            }
+        }
         compose.onNodeWithContentDescription("Переместить задачу").performClick()
         compose.onNodeWithContentDescription("Переместить в Завершено").performClick()
         compose.runOnIdle { assertEquals("done", movedTo) }
+    }
+
+    @Test fun kanbanQuickAddCreatesTaskInSelectedColumn() {
+        val doing = KanbanColumnEntity("doing", "owner", "В работе", "#7C3AED", "doing", 0, "", "", 1, null)
+        var created: Pair<String, String>? = null
+        compose.setContent {
+            MaterialTheme {
+                KanbanBoardContent(
+                    columns = listOf(doing), tasks = emptyList(), projects = emptyList(), busy = false, syncing = false,
+                    syncError = null, onDismissError = {}, onRefresh = {}, onMove = { _, _, _ -> },
+                    onCreateTask = { column, title, _ -> created = column.id to title }, onCreateColumn = { _, _, _ -> },
+                    onUpdateColumn = { _, _, _, _ -> }, onReorderColumns = {}, onDeleteColumn = { _, _ -> },
+                )
+            }
+        }
+        compose.onNodeWithContentDescription("Добавить задачу в В работе").performClick()
+        compose.onNodeWithText("Название").performClick().performTextInput("Новая карточка")
+        compose.onNodeWithText("Добавить").performClick()
+        compose.runOnIdle { assertEquals("doing" to "Новая карточка", created) }
+    }
+
+    @Test fun kanbanSettingsCreatesCustomColumn() {
+        val inbox = KanbanColumnEntity("inbox", "owner", "Входящие", "#2563EB", "inbox", 0, "", "", 1, null)
+        var createdName: String? = null
+        compose.setContent {
+            MaterialTheme {
+                KanbanBoardContent(
+                    columns = listOf(inbox), tasks = emptyList(), projects = emptyList(), busy = false, syncing = false,
+                    syncError = null, onDismissError = {}, onRefresh = {}, onMove = { _, _, _ -> }, onCreateTask = { _, _, _ -> },
+                    onCreateColumn = { name, _, _ -> createdName = name }, onUpdateColumn = { _, _, _, _ -> },
+                    onReorderColumns = {}, onDeleteColumn = { _, _ -> },
+                )
+            }
+        }
+        compose.onNodeWithContentDescription("Настроить колонки").performClick()
+        compose.onNodeWithText("Добавить колонку").performClick()
+        compose.onNodeWithText("Название").performClick().performTextInput("Проверка")
+        compose.onNodeWithText("Сохранить").performClick()
+        compose.runOnIdle { assertEquals("Проверка", createdName) }
     }
 
     @Test fun loginRemainsUsableWithLargeFontScale() {

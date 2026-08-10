@@ -64,6 +64,29 @@ class TaskRepositoryTest {
         assert(body.contains("\"reminder_offsets\":[15,60]"))
     }
 
+    @Test fun kanbanMoveStoresManualOrderAndVersionedMoveMutation() = runBlocking {
+        val first = repository.createInboxTask("Первая")
+        repository.createInboxTask("Вторая")
+        val third = repository.createInboxTask("Третья")
+        repository.updateLocalTask(third.id, "Третья изменена", "high", "", null, null, null)
+
+        repository.moveLocalTask(third.id, column("inbox", "inbox"), first.id)
+
+        assertEquals(listOf(third.id, first.id), database.taskDao().activeInColumn("inbox").take(2).map { it.id })
+        val move = repository.pendingMutations(20).last()
+        assertEquals("move", move.operation)
+        assert(move.bodyJson.orEmpty().contains("\"before_task_id\":\"${first.id}\""))
+        assert(move.bodyJson.orEmpty().contains("\"expected_version\":2"))
+    }
+
+    @Test fun kanbanQuickAddUsesColumnStatusAndProject() = runBlocking {
+        val task = repository.createKanbanTask(column("done", "done"), "Готовая задача", "project")
+
+        assertEquals("done", task.status)
+        assertEquals("done", task.columnId)
+        assertEquals("project", task.projectId)
+    }
+
     private fun column(id: String, status: String) = KanbanColumnEntity(id, "owner", id, "#000000", status, 0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", 1, null)
 }
 

@@ -27,6 +27,12 @@ interface TaskFlowApi {
     @POST("projects/{projectId}/archive") suspend fun archiveProject(@Path("projectId") projectId: String, @Body request: VersionGuardRequest): ProjectResponse
     @HTTP(method = "DELETE", path = "projects/{projectId}/archive", hasBody = true)
     suspend fun restoreProject(@Path("projectId") projectId: String, @Body request: VersionGuardRequest): ProjectResponse
+    @GET("kanban/columns") suspend fun kanbanColumns(): KanbanColumnListResponse
+    @POST("kanban/columns") suspend fun createKanbanColumn(@Body request: KanbanColumnWriteRequest): KanbanColumnResponse
+    @PATCH("kanban/columns/{columnId}") suspend fun updateKanbanColumn(@Path("columnId") columnId: String, @Body request: KanbanColumnUpdateRequest): KanbanColumnResponse
+    @POST("kanban/columns/reorder") suspend fun reorderKanbanColumns(@Body request: KanbanColumnOrderRequest): KanbanColumnListResponse
+    @HTTP(method = "DELETE", path = "kanban/columns/{columnId}", hasBody = true)
+    suspend fun deleteKanbanColumn(@Path("columnId") columnId: String, @Body request: KanbanColumnDeleteRequest): DeletedKanbanColumnResponse
     @GET("me") suspend fun me(): UserResponse
     @PATCH("account") suspend fun updateAccount(@Body request: AccountUpdateRequest): AccountUpdateResponse
 }
@@ -59,6 +65,13 @@ data class VersionGuardRequest(@Json(name = "expected_version") val expectedVers
 data class ProjectResponse(val project: ProjectDto)
 data class ProjectListResponse(val projects: List<ProjectDto>)
 data class KanbanColumnDto(val id: String, @Json(name = "owner_id") val ownerId: String, val name: String, val color: String, @Json(name = "semantic_status") val semanticStatus: String, val position: Int, @Json(name = "created_at") val createdAt: String, @Json(name = "updated_at") val updatedAt: String, val version: Int, @Json(name = "deleted_at") val deletedAt: String?)
+data class KanbanColumnWriteRequest(val name: String, val color: String, @Json(name = "semantic_status") val semanticStatus: String)
+data class KanbanColumnUpdateRequest(val name: String, val color: String, @Json(name = "semantic_status") val semanticStatus: String, @Json(name = "expected_version") val expectedVersion: Int)
+data class KanbanColumnOrderRequest(@Json(name = "column_ids") val columnIds: List<String>)
+data class KanbanColumnDeleteRequest(@Json(name = "move_to_column_id") val moveToColumnId: String, @Json(name = "expected_version") val expectedVersion: Int)
+data class KanbanColumnResponse(val column: KanbanColumnDto)
+data class KanbanColumnListResponse(val columns: List<KanbanColumnDto>)
+data class DeletedKanbanColumnResponse(val deleted: Boolean, val id: String, @Json(name = "moved_to_column_id") val movedToColumnId: String)
 data class SyncResponse(val snapshot: String, val cursor: String, @Json(name = "has_more") val hasMore: Boolean, @Json(name = "next_cursor") val nextCursor: String?, val tasks: List<TaskDto>, val projects: List<ProjectDto>, @Json(name = "kanban_columns") val kanbanColumns: List<KanbanColumnDto>)
 data class MutationBatch(val mutations: List<MutationDto>)
 data class MutationDto(

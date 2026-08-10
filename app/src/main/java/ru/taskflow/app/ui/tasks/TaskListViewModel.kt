@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import ru.taskflow.app.data.SyncRepository
 import ru.taskflow.app.data.TaskRepository
 import ru.taskflow.app.data.ProjectRepository
+import ru.taskflow.app.data.KanbanRepository
 import ru.taskflow.app.data.TaskUpdate
 import ru.taskflow.app.data.local.TaskEntity
 import ru.taskflow.app.data.local.TaskConflictEntity
@@ -19,7 +20,7 @@ import ru.taskflow.app.data.session.TokenStore
 import ru.taskflow.app.data.sync.TaskSyncScheduler
 import ru.taskflow.app.data.reminders.TaskReminderWorker
 
-class TaskListViewModel(private val tasks: TaskRepository, private val projectsRepository: ProjectRepository, private val sync: SyncRepository, private val appContext: Context) : ViewModel() {
+class TaskListViewModel(private val tasks: TaskRepository, private val projectsRepository: ProjectRepository, private val kanbanRepository: KanbanRepository, private val sync: SyncRepository, private val appContext: Context) : ViewModel() {
     val taskList = tasks.tasks.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val projects = tasks.projects.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val archivedProjects = tasks.archivedProjects.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -33,6 +34,8 @@ class TaskListViewModel(private val tasks: TaskRepository, private val projectsR
     val syncError = _syncError
     private val _projectBusy = MutableStateFlow(false)
     val projectBusy = _projectBusy
+    private val _kanbanBusy = MutableStateFlow(false)
+    val kanbanBusy = _kanbanBusy
 
     init { refresh() }
 
@@ -81,8 +84,29 @@ class TaskListViewModel(private val tasks: TaskRepository, private val projectsR
         viewModelScope.launch { runCatching { tasks.reopenLocalTask(taskId) }.onSuccess { TaskSyncScheduler.enqueue(appContext) }; refresh() }
     }
 
-    fun moveTask(taskId: String, column: ru.taskflow.app.data.local.KanbanColumnEntity) {
-        viewModelScope.launch { runCatching { tasks.moveLocalTask(taskId, column) }.onSuccess { TaskSyncScheduler.enqueue(appContext) }; refresh() }
+    fun createKanbanTask(column: ru.taskflow.app.data.local.KanbanColumnEntity, title: String, projectId: String?) {
+        if (title.isBlank()) return
+        viewModelScope.launch { runCatching { tasks.createKanbanTask(column, title, projectId) }.onSuccess { TaskSyncScheduler.enqueue(appContext) }; refresh() }
+    }
+
+    fun moveTask(taskId: String, column: ru.taskflow.app.data.local.KanbanColumnEntity, beforeTaskId: String? = null) {
+        viewModelScope.launch { runCatching { tasks.moveLocalTask(taskId, column, beforeTaskId) }.onSuccess { TaskSyncScheduler.enqueue(appContext) }; refresh() }
+    }
+
+    fun createKanbanColumn(name: String, color: String, status: String) = kanbanAction { kanbanRepository.create(name, color, status) }
+    fun updateKanbanColumn(column: ru.taskflow.app.data.local.KanbanColumnEntity, name: String, color: String, status: String) = kanbanAction { kanbanRepository.update(column, name, color, status) }
+    fun reorderKanbanColumns(columns: List<ru.taskflow.app.data.local.KanbanColumnEntity>) = kanbanAction { kanbanRepository.reorder(columns) }
+    fun deleteKanbanColumn(column: ru.taskflow.app.data.local.KanbanColumnEntity, destination: ru.taskflow.app.data.local.KanbanColumnEntity) = kanbanAction { kanbanRepository.delete(column, destination) }
+
+    private fun kanbanAction(action: suspend () -> Unit) {
+        if (_kanbanBusy.value) return
+        viewModelScope.launch {
+            _kanbanBusy.value = true
+            runCatching { action(); sync.pull() }
+                .onSuccess { _syncError.value = null }
+                .onFailure { _syncError.value = it.message ?: "Не удалось изменить Kanban" }
+            _kanbanBusy.value = false
+        }
     }
 
     fun deleteTask(taskId: String) {
@@ -120,6 +144,7 @@ class TaskListViewModelFactory(private val database: ru.taskflow.app.data.local.
         val serverUrl = checkNotNull(tokenStore.serverUrl()) { "Сервер не настроен" }
         val api = TaskFlowApiFactory(tokenStore).create(serverUrl)
         val projects = ProjectRepository(api, database)
-        return TaskListViewModel(tasks, projects, SyncRepository(api, tasks, projects), appContext) as T
+        val kanban = KanbanRepository(api, database)
+        return TaskListViewModel(tasks, projects, kanban, SyncRepository(api, tasks, projects), appContext) as T
     }
 }

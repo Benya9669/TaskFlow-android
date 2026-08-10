@@ -34,16 +34,16 @@ class TaskRepository(private val database: TaskFlowDatabase) {
         }
     }
 
-    suspend fun createLocalTask(ownerId: String, columnId: String, title: String, priority: String = "normal", scheduledDate: String? = null): TaskEntity {
+    suspend fun createLocalTask(ownerId: String, columnId: String, title: String, priority: String = "normal", scheduledDate: String? = null, status: String = "inbox", projectId: String? = null): TaskEntity {
         val now = Instant.now().toString()
         val task = TaskEntity(
-            id = UUID.randomUUID().toString(), ownerId = ownerId, projectId = null, columnId = columnId,
-            title = title.trim(), description = "", status = "inbox", priority = priority, scheduledDate = scheduledDate,
+            id = UUID.randomUUID().toString(), ownerId = ownerId, projectId = projectId, columnId = columnId,
+            title = title.trim(), description = "", status = status, priority = priority, scheduledDate = scheduledDate,
             dueAt = null, estimatedMinutes = null, kanbanPosition = Int.MAX_VALUE, recurrence = null,
             reminderOffsets = emptyList(), tags = emptyList(), createdAt = now, updatedAt = now, version = 1, deletedAt = null,
         )
         require(priority in PRIORITIES) { "Некорректный приоритет" }
-        val body = mapOf("title" to task.title, "column_id" to task.columnId, "status" to task.status, "priority" to task.priority, "scheduled_date" to task.scheduledDate)
+        val body = mapOf("title" to task.title, "project_id" to task.projectId, "column_id" to task.columnId, "status" to task.status, "priority" to task.priority, "scheduled_date" to task.scheduledDate)
         database.withTransaction {
             database.taskDao().upsert(task)
             database.mutationDao().insert(PendingMutationEntity(UUID.randomUUID().toString(), "create", task.id, moshi.adapter(Map::class.java).toJson(body), System.currentTimeMillis()))
@@ -55,6 +55,9 @@ class TaskRepository(private val database: TaskFlowDatabase) {
         val column = checkNotNull(database.kanbanColumnDao().inbox()) { "Сначала дождитесь синхронизации колонок" }
         return createLocalTask(column.ownerId, column.id, title, priority, scheduledDate)
     }
+
+    suspend fun createKanbanTask(column: KanbanColumnEntity, title: String, projectId: String? = null): TaskEntity =
+        createLocalTask(column.ownerId, column.id, title, status = column.semanticStatus, projectId = projectId)
 
     suspend fun completeLocalTask(taskId: String) {
         val current = checkNotNull(database.taskDao().find(taskId)) { "Задача не найдена" }
@@ -72,11 +75,40 @@ class TaskRepository(private val database: TaskFlowDatabase) {
         enqueueUpdate(updated, mapOf("column_id" to updated.columnId, "status" to "inbox", "expected_version" to current.version))
     }
 
-    suspend fun moveLocalTask(taskId: String, column: KanbanColumnEntity) {
+    suspend fun moveLocalTask(taskId: String, column: KanbanColumnEntity, beforeTaskId: String? = null) {
         val current = checkNotNull(database.taskDao().find(taskId)) { "Задача не найдена" }
-        if (current.deletedAt != null || current.columnId == column.id) return
-        val updated = current.copy(columnId = column.id, status = column.semanticStatus, kanbanPosition = Int.MAX_VALUE, updatedAt = Instant.now().toString())
-        enqueueUpdate(updated, mapOf("column_id" to column.id, "status" to column.semanticStatus, "expected_version" to current.version))
+        if (current.deletedAt != null || beforeTaskId == taskId) return
+        val target = database.taskDao().activeInColumn(column.id).filter { it.id != taskId }.toMutableList()
+        val insertAt = if (beforeTaskId == null) target.size else target.indexOfFirst { it.id == beforeTaskId }.also {
+            require(it >= 0) { "Опорная задача отсутствует в целевой колонке" }
+        }
+        val currentOrder = database.taskDao().activeInColumn(column.id).map(TaskEntity::id)
+        val desiredOrder = target.map(TaskEntity::id).toMutableList().apply { add(insertAt, taskId) }
+        if (current.columnId == column.id && currentOrder == desiredOrder) return
+        val now = Instant.now().toString()
+        val moved = current.copy(columnId = column.id, status = column.semanticStatus, updatedAt = now)
+        target.add(insertAt, moved)
+        val ordered = target.mapIndexed { index, task ->
+            task.copy(
+                columnId = column.id,
+                status = if (task.id == taskId) column.semanticStatus else task.status,
+                kanbanPosition = (index + 1) * 1024,
+                updatedAt = if (task.id == taskId) now else task.updatedAt,
+            )
+        }
+        database.withTransaction {
+            val expectedVersion = nextExpectedVersion(current)
+            database.taskDao().upsertAll(ordered)
+            database.mutationDao().insert(
+                PendingMutationEntity(
+                    UUID.randomUUID().toString(),
+                    "move",
+                    taskId,
+                    mapAdapter.toJson(mapOf("column_id" to column.id, "before_task_id" to beforeTaskId, "expected_version" to expectedVersion)),
+                    System.currentTimeMillis(),
+                ),
+            )
+        }
     }
 
     suspend fun deleteLocalTask(taskId: String) {
@@ -110,6 +142,7 @@ class TaskRepository(private val database: TaskFlowDatabase) {
     suspend fun saveConflict(mutation: PendingMutationEntity, serverTask: TaskDto) {
         val body = checkNotNull(mutation.bodyJson)
         database.withTransaction {
+            database.taskDao().upsert(serverTask.toEntity())
             database.taskConflictDao().insert(TaskConflictEntity(mutation.id, mutation.taskId, body, serverTask.title, serverTask.priority, System.currentTimeMillis()))
             database.mutationDao().delete(listOf(mutation.id))
         }
@@ -122,17 +155,25 @@ class TaskRepository(private val database: TaskFlowDatabase) {
         val body = mapAdapter.fromJson(conflict.localBodyJson).orEmpty().toMutableMap()
         body["expected_version"] = current.version
         database.withTransaction {
-            database.mutationDao().insert(PendingMutationEntity(UUID.randomUUID().toString(), "update", conflict.taskId, mapAdapter.toJson(body), System.currentTimeMillis()))
+            val operation = if (body.containsKey("before_task_id")) "move" else "update"
+            database.mutationDao().insert(PendingMutationEntity(UUID.randomUUID().toString(), operation, conflict.taskId, mapAdapter.toJson(body), System.currentTimeMillis()))
             database.taskConflictDao().delete(conflict.mutationId)
         }
     }
 
     private suspend fun enqueueUpdate(task: TaskEntity, body: Map<String, Any?>) {
         database.withTransaction {
+            val adjustedBody = body.toMutableMap().apply {
+                if (containsKey("expected_version")) this["expected_version"] = nextExpectedVersion(task)
+            }
             database.taskDao().upsert(task)
-            database.mutationDao().insert(PendingMutationEntity(UUID.randomUUID().toString(), "update", task.id, moshi.adapter(Map::class.java).toJson(body), System.currentTimeMillis()))
+            database.mutationDao().insert(PendingMutationEntity(UUID.randomUUID().toString(), "update", task.id, mapAdapter.toJson(adjustedBody), System.currentTimeMillis()))
         }
     }
+
+    private suspend fun nextExpectedVersion(task: TaskEntity): Int = task.version + database.mutationDao()
+        .forEntity("task", task.id)
+        .count { it.operation == "update" || it.operation == "move" }
 
     private companion object {
         const val SYNC_CURSOR_KEY = "main"

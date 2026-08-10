@@ -124,6 +124,11 @@ private abstract class ProjectAwareTestApi : TaskFlowApi {
     override suspend fun updateProject(projectId: String, request: ru.taskflow.app.data.remote.ProjectUpdateRequest) = throw UnsupportedOperationException()
     override suspend fun archiveProject(projectId: String, request: ru.taskflow.app.data.remote.VersionGuardRequest) = throw UnsupportedOperationException()
     override suspend fun restoreProject(projectId: String, request: ru.taskflow.app.data.remote.VersionGuardRequest) = throw UnsupportedOperationException()
+    override suspend fun kanbanColumns() = throw UnsupportedOperationException()
+    override suspend fun createKanbanColumn(request: ru.taskflow.app.data.remote.KanbanColumnWriteRequest) = throw UnsupportedOperationException()
+    override suspend fun updateKanbanColumn(columnId: String, request: ru.taskflow.app.data.remote.KanbanColumnUpdateRequest) = throw UnsupportedOperationException()
+    override suspend fun reorderKanbanColumns(request: ru.taskflow.app.data.remote.KanbanColumnOrderRequest) = throw UnsupportedOperationException()
+    override suspend fun deleteKanbanColumn(columnId: String, request: ru.taskflow.app.data.remote.KanbanColumnDeleteRequest) = throw UnsupportedOperationException()
     override suspend fun me() = throw UnsupportedOperationException()
     override suspend fun updateAccount(request: ru.taskflow.app.data.remote.AccountUpdateRequest) = throw UnsupportedOperationException()
 }

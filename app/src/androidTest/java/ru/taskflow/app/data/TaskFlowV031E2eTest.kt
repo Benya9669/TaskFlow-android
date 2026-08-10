@@ -18,7 +18,7 @@ import ru.taskflow.app.data.session.TokenStore
 import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
-class TaskFlowV030E2eTest {
+class TaskFlowV031E2eTest {
     private lateinit var database: TaskFlowDatabase
 
     @Before fun setUp() {
@@ -27,7 +27,7 @@ class TaskFlowV030E2eTest {
 
     @After fun tearDown() = database.close()
 
-    @Test fun syncsTasksAndProjectsWithExternalV030ServerWhenConfigured() = runBlocking {
+    @Test fun syncsTasksProjectsAndKanbanMovesWithExternalV031ServerWhenConfigured() = runBlocking {
         val arguments = InstrumentationRegistry.getArguments()
         val baseUrl = arguments.getString("taskflowE2eUrl")
         val email = arguments.getString("taskflowE2eEmail")
@@ -56,6 +56,21 @@ class TaskFlowV030E2eTest {
         assertEquals(emptyList<Any>(), repository.pendingMutations(10))
         val project = checkNotNull(database.projectDao().find(projectId))
         assertEquals(projectId, project.id)
+
+        val inbox = checkNotNull(database.kanbanColumnDao().inbox())
+        val doing = checkNotNull(database.kanbanColumnDao().byStatus("doing"))
+        val firstCard = repository.createKanbanTask(inbox, "Android v0.3.1 E2E first", projectId)
+        val secondCard = repository.createKanbanTask(inbox, "Android v0.3.1 E2E second", projectId)
+        sync.pushAndPull()
+        repository.moveLocalTask(secondCard.id, inbox, firstCard.id)
+        sync.pushAndPull()
+        assertEquals(secondCard.id, database.taskDao().activeInColumn(inbox.id).first { it.projectId == projectId }.id)
+        repository.moveLocalTask(secondCard.id, doing)
+        sync.pushAndPull()
+        assertEquals(doing.id, database.taskDao().find(secondCard.id)?.columnId)
+        repository.deleteLocalTask(firstCard.id)
+        repository.deleteLocalTask(secondCard.id)
+        sync.pushAndPull()
 
         projects.archive(project)
         sync.pushAndPull()

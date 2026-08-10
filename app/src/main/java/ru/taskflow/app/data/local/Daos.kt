@@ -12,6 +12,8 @@ interface TaskDao {
     fun observeActive(): Flow<List<TaskEntity>>
 
     @Query("SELECT * FROM tasks WHERE id = :id") suspend fun find(id: String): TaskEntity?
+    @Query("SELECT * FROM tasks WHERE columnId = :columnId AND deletedAt IS NULL ORDER BY kanbanPosition, createdAt, id")
+    suspend fun activeInColumn(columnId: String): List<TaskEntity>
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(task: TaskEntity)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertAll(tasks: List<TaskEntity>)
 }
@@ -36,7 +38,9 @@ interface KanbanColumnDao {
     suspend fun inbox(): KanbanColumnEntity?
     @Query("SELECT * FROM kanban_columns WHERE deletedAt IS NULL AND semanticStatus = :status ORDER BY position LIMIT 1")
     suspend fun byStatus(status: String): KanbanColumnEntity?
+    @Query("SELECT * FROM kanban_columns WHERE id = :id") suspend fun find(id: String): KanbanColumnEntity?
     @Query("SELECT ownerId FROM kanban_columns LIMIT 1") suspend fun anyOwnerId(): String?
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(column: KanbanColumnEntity)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertAll(columns: List<KanbanColumnEntity>)
 }
 
