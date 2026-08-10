@@ -4,8 +4,10 @@ package ru.taskflow.app.ui.tasks
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,13 +20,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AssistChip
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.material3.rememberTimePickerState
@@ -40,23 +45,33 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import kotlinx.coroutines.launch
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import ru.taskflow.app.data.TaskUpdate
 import ru.taskflow.app.data.local.ProjectEntity
 import ru.taskflow.app.data.local.TaskEntity
 import ru.taskflow.app.ui.components.EmptyState
@@ -83,11 +98,12 @@ fun TaskListContent(
     onCreate: CreateTask? = null,
     onComplete: (String) -> Unit,
     onDelete: (String) -> Unit,
-    onUpdate: (String, String, String, String, String?, String?, String?) -> Unit,
+    onUpdate: (String, TaskUpdate) -> Unit,
     onRefresh: () -> Unit = {},
     syncing: Boolean = false,
     syncError: String? = null,
     onDismissError: () -> Unit = {},
+    onReopen: (String) -> Unit = {},
 ) {
     var editingTask by remember { mutableStateOf<TaskEntity?>(null) }
     var deletingTask by remember { mutableStateOf<TaskEntity?>(null) }
@@ -96,7 +112,14 @@ fun TaskListContent(
     var statusFilter by rememberSaveable { mutableStateOf<String?>(null) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var sort by rememberSaveable { mutableStateOf(TaskSort.Updated) }
+    var createOpen by rememberSaveable { mutableStateOf(false) }
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var optionsOpen by rememberSaveable { mutableStateOf(false) }
+    var pendingDeletionIds by remember { mutableStateOf(emptySet<String>()) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     val filteredTasks = tasks.filter { task ->
+        task.id !in pendingDeletionIds &&
         (projectFilter == null || task.projectId == projectFilter) &&
             (priorityFilter == null || task.priority == priorityFilter) &&
             (statusFilter == null || task.status == statusFilter) &&
@@ -105,6 +128,7 @@ fun TaskListContent(
     val activeTasks = filteredTasks.filter { it.status != "done" }
     val completedTasks = filteredTasks.filter { it.status == "done" }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(TaskFlowSpace.md)) {
         FocusSummary(activeTasks.size, completedTasks.size, syncing, onRefresh)
         syncError?.let {
@@ -115,40 +139,90 @@ fun TaskListContent(
                 }
             }
         }
-        onCreate?.let { QuickAdd(it) }
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Поиск задач") },
-            singleLine = true,
-            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-            trailingIcon = if (searchQuery.isBlank()) null else ({ IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Outlined.Close, "Очистить поиск") } }),
-        )
-        TaskSortPicker(sort) { sort = it }
-        TaskFilters(projects, projectFilter, priorityFilter, statusFilter, { projectFilter = it }, { priorityFilter = it }, { statusFilter = it })
+            horizontalArrangement = Arrangement.spacedBy(TaskFlowSpace.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            onCreate?.let {
+                Button(onClick = { createOpen = true }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Outlined.Add, contentDescription = null)
+                    Text("Новая задача", modifier = Modifier.padding(start = TaskFlowSpace.xs))
+                }
+            }
+            FilledTonalIconButton(onClick = { searchOpen = !searchOpen }) {
+                Icon(if (searchOpen) Icons.Outlined.Close else Icons.Outlined.Search, if (searchOpen) "Закрыть поиск" else "Открыть поиск")
+            }
+            FilledTonalIconButton(onClick = { optionsOpen = true }) {
+                Icon(Icons.Outlined.Tune, if (projectFilter != null || priorityFilter != null || statusFilter != null || sort != TaskSort.Updated) "Настройки списка, применены фильтры" else "Настройки списка")
+            }
+        }
+        if (searchOpen) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Поиск задач") },
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                trailingIcon = if (searchQuery.isBlank()) null else ({ IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Outlined.Close, "Очистить поиск") } }),
+            )
+        }
 
         if (filteredTasks.isEmpty()) EmptyState(emptyTitle, emptyDescription)
         else LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(TaskFlowSpace.sm)) {
             items(activeTasks, key = TaskEntity::id) { task ->
-                TaskCard(task, onComplete, { deletingTask = task }) { editingTask = task }
+                TaskCard(task, onComplete = {
+                    onComplete(task.id)
+                    scope.launch {
+                        if (snackbarHostState.showSnackbar("Задача завершена", "Вернуть") == SnackbarResult.ActionPerformed) onReopen(task.id)
+                    }
+                }, onDelete = { deletingTask = task }, onOpen = { editingTask = task })
             }
             if (completedTasks.isNotEmpty()) {
                 item { Text("Завершено (${completedTasks.size})", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = TaskFlowSpace.sm)) }
-                items(completedTasks, key = TaskEntity::id) { task -> TaskCard(task, onComplete, { deletingTask = task }) { editingTask = task } }
+                items(completedTasks, key = TaskEntity::id) { task -> TaskCard(task, onComplete = {}, onDelete = { deletingTask = task }, onOpen = { editingTask = task }) }
             }
         }
     }
-    editingTask?.let { task -> TaskEditorDialog(task, projects, { editingTask = null }) { title, priority, description, projectId, scheduledDate, dueAt ->
-        onUpdate(task.id, title, priority, description, projectId, scheduledDate, dueAt); editingTask = null
+        SnackbarHost(snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = TaskFlowSpace.sm))
+    }
+    editingTask?.let { task -> TaskEditorDialog(task, projects, { editingTask = null }) { update ->
+        onUpdate(task.id, update); editingTask = null
     } }
     deletingTask?.let { task ->
         AlertDialog(
             onDismissRequest = { deletingTask = null },
             title = { Text("Удалить задачу?") },
             text = { Text("«${task.title}» будет удалена на всех устройствах после синхронизации.") },
-            confirmButton = { Button(onClick = { onDelete(task.id); deletingTask = null }) { Text("Удалить") } },
+            confirmButton = { Button(onClick = {
+                deletingTask = null
+                pendingDeletionIds = pendingDeletionIds + task.id
+                scope.launch {
+                    val result = snackbarHostState.showSnackbar("Задача удалена", "Отменить")
+                    if (result != SnackbarResult.ActionPerformed) onDelete(task.id)
+                    pendingDeletionIds = pendingDeletionIds - task.id
+                }
+            }) { Text("Удалить") } },
             dismissButton = { TextButton(onClick = { deletingTask = null }) { Text("Отмена") } },
+        )
+    }
+    if (createOpen && onCreate != null) {
+        TaskCreateSheet(onCreate = onCreate, onDismiss = { createOpen = false })
+    }
+    if (optionsOpen) {
+        TaskListOptionsSheet(
+            projects = projects,
+            sort = sort,
+            project = projectFilter,
+            priority = priorityFilter,
+            status = statusFilter,
+            onSort = { sort = it },
+            onProject = { projectFilter = it },
+            onPriority = { priorityFilter = it },
+            onStatus = { statusFilter = it },
+            onReset = { sort = TaskSort.Updated; projectFilter = null; priorityFilter = null; statusFilter = null },
+            onDismiss = { optionsOpen = false },
         )
     }
 }
@@ -186,21 +260,26 @@ private fun FocusSummary(activeCount: Int, completedCount: Int, syncing: Boolean
 }
 
 @Composable
-private fun QuickAdd(onCreate: CreateTask) {
-    var title by remember { mutableStateOf("") }
-    var priority by remember { mutableStateOf("normal") }
+private fun TaskCreateSheet(onCreate: CreateTask, onDismiss: () -> Unit) {
+    var title by rememberSaveable { mutableStateOf("") }
+    var priority by rememberSaveable { mutableStateOf("normal") }
     var scheduledDate by remember { mutableStateOf<LocalDate?>(null) }
     var datePickerOpen by remember { mutableStateOf(false) }
-    fun submit() { title.trim().takeIf(String::isNotBlank)?.let { onCreate(it, priority, scheduledDate?.toString()); title = ""; priority = "normal"; scheduledDate = null } }
-    ElevatedCard(colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.padding(TaskFlowSpace.md), verticalArrangement = Arrangement.spacedBy(TaskFlowSpace.sm)) {
-            OutlinedTextField(value = title, onValueChange = { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Новая задача") }, singleLine = true, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { submit() }))
+    fun submit() { title.trim().takeIf(String::isNotBlank)?.let { onCreate(it, priority, scheduledDate?.toString()); onDismiss() } }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.padding(horizontal = TaskFlowSpace.md, vertical = TaskFlowSpace.sm), verticalArrangement = Arrangement.spacedBy(TaskFlowSpace.md)) {
+            Text("Новая задача", style = MaterialTheme.typography.titleLarge)
+            OutlinedTextField(value = title, onValueChange = { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Название") }, singleLine = true, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { submit() }))
+            Text("Приоритет", style = MaterialTheme.typography.labelLarge)
             PriorityPicker(priority) { priority = it }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(TaskFlowSpace.sm)) {
                 AssistChip(onClick = { datePickerOpen = true }, label = { Text(scheduledDate?.toString() ?: "Дата") }, leadingIcon = { Icon(Icons.Outlined.CalendarToday, null, Modifier.size(TaskFlowSpace.md)) })
                 if (scheduledDate != null) TextButton(onClick = { scheduledDate = null }) { Text("Очистить") }
             }
-            Button(onClick = ::submit, enabled = title.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Добавить во входящие") }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onDismiss) { Text("Отмена") }
+                Button(onClick = ::submit, enabled = title.isNotBlank()) { Text("Добавить") }
+            }
         }
     }
     if (datePickerOpen) {
@@ -210,11 +289,12 @@ private fun QuickAdd(onCreate: CreateTask) {
 }
 
 @Composable
-private fun TaskCard(task: TaskEntity, onComplete: (String) -> Unit, onDelete: (String) -> Unit, onEdit: () -> Unit) {
+private fun TaskCard(task: TaskEntity, onComplete: () -> Unit, onDelete: () -> Unit, onOpen: () -> Unit) {
     val isDone = task.status == "done"
-    ElevatedCard(modifier = Modifier.fillMaxWidth().alpha(if (isDone) .68f else 1f), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+    var menuOpen by remember { mutableStateOf(false) }
+    ElevatedCard(modifier = Modifier.fillMaxWidth().alpha(if (isDone) .68f else 1f).clickable(onClick = onOpen), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Row(Modifier.padding(TaskFlowSpace.md), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(TaskFlowSpace.sm)) {
-            if (!isDone) IconButton(onClick = { onComplete(task.id) }) { Icon(Icons.Outlined.Check, "Завершить", tint = Success) }
+            if (!isDone) IconButton(onClick = onComplete) { Icon(Icons.Outlined.Check, "Завершить", tint = Success) }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(TaskFlowSpace.xs)) {
                 Text(task.title, style = MaterialTheme.typography.titleMedium)
                 if (task.description.isNotBlank()) Text(task.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -227,8 +307,13 @@ private fun TaskCard(task: TaskEntity, onComplete: (String) -> Unit, onDelete: (
                     }
                 }
             }
-            IconButton(onClick = onEdit) { Icon(Icons.Outlined.Edit, "Редактировать") }
-            IconButton(onClick = { onDelete(task.id) }) { Icon(Icons.Outlined.Delete, "Удалить", tint = MaterialTheme.colorScheme.error) }
+            Box {
+                IconButton(onClick = { menuOpen = true }) { Icon(Icons.Outlined.MoreVert, "Действия задачи") }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(text = { Text("Открыть") }, leadingIcon = { Icon(Icons.Outlined.Edit, null) }, onClick = { menuOpen = false; onOpen() })
+                    DropdownMenuItem(text = { Text("Удалить", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(Icons.Outlined.Delete, null, tint = MaterialTheme.colorScheme.error) }, onClick = { menuOpen = false; onDelete() })
+                }
+            }
         }
     }
 }
@@ -250,6 +335,34 @@ private fun TaskSortPicker(selected: TaskSort, onSelected: (TaskSort) -> Unit) {
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(TaskFlowSpace.xs)) {
         TaskSort.entries.forEach { value ->
             FilterChip(selected = selected == value, onClick = { onSelected(value) }, label = { Text(value.label) })
+        }
+    }
+}
+
+@Composable
+private fun TaskListOptionsSheet(
+    projects: List<ProjectEntity>,
+    sort: TaskSort,
+    project: String?,
+    priority: String?,
+    status: String?,
+    onSort: (TaskSort) -> Unit,
+    onProject: (String?) -> Unit,
+    onPriority: (String?) -> Unit,
+    onStatus: (String?) -> Unit,
+    onReset: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.padding(horizontal = TaskFlowSpace.md, vertical = TaskFlowSpace.sm), verticalArrangement = Arrangement.spacedBy(TaskFlowSpace.md)) {
+            Text("Настройки списка", style = MaterialTheme.typography.titleLarge)
+            Text("Сортировка", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TaskSortPicker(sort, onSort)
+            TaskFilters(projects, project, priority, status, onProject, onPriority, onStatus)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(onClick = onReset) { Text("Сбросить") }
+                Button(onClick = onDismiss) { Text("Готово") }
+            }
         }
     }
 }
@@ -291,7 +404,7 @@ private fun TaskEditorDialog(
     task: TaskEntity,
     projects: List<ProjectEntity>,
     onDismiss: () -> Unit,
-    onSave: (String, String, String, String?, String?, String?) -> Unit,
+    onSave: (TaskUpdate) -> Unit,
 ) {
     var title by remember(task.id) { mutableStateOf(task.title) }
     var priority by remember(task.id) { mutableStateOf(task.priority) }
@@ -301,6 +414,9 @@ private fun TaskEditorDialog(
     var dueDate by remember(task.id) { mutableStateOf(task.dueAt?.let(::dueDate)) }
     var dueHour by remember(task.id) { mutableIntStateOf(task.dueAt?.let(::dueHour) ?: 9) }
     var dueMinute by remember(task.id) { mutableIntStateOf(task.dueAt?.let(::dueMinute) ?: 0) }
+    var estimatedMinutes by remember(task.id) { mutableStateOf(task.estimatedMinutes?.toString().orEmpty()) }
+    var tagsText by remember(task.id) { mutableStateOf(task.tags.joinToString(", ")) }
+    var reminderOffsets by remember(task.id) { mutableStateOf(task.reminderOffsets.toSet()) }
     var picker by remember { mutableStateOf<Picker?>(null) }
     var discardPrompt by remember { mutableStateOf(false) }
 
@@ -314,7 +430,10 @@ private fun TaskEditorDialog(
         description != task.description ||
         projectId != task.projectId ||
         scheduledDate?.toString() != task.scheduledDate ||
-        updatedDueAt != task.dueAt
+        updatedDueAt != task.dueAt ||
+        estimatedMinutes.toIntOrNull() != task.estimatedMinutes ||
+        tagsText.split(',').map(String::trim).filter(String::isNotBlank) != task.tags ||
+        reminderOffsets.sorted() != task.reminderOffsets.sorted()
 
     fun requestDismiss() {
         if (dirty) discardPrompt = true else onDismiss()
@@ -376,6 +495,33 @@ private fun TaskEditorDialog(
                     Text("Время: %02d:%02d".format(dueHour, dueMinute))
                 }
             }
+            OutlinedTextField(
+                value = estimatedMinutes,
+                onValueChange = { value -> estimatedMinutes = value.filter(Char::isDigit).take(6) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Оценка, минут") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+            OutlinedTextField(
+                value = tagsText,
+                onValueChange = { tagsText = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Теги через запятую") },
+                supportingText = { Text("Например: работа, важно") },
+            )
+            Text("Напоминания", style = MaterialTheme.typography.labelLarge)
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(TaskFlowSpace.xs)) {
+                reminderChoices.forEach { (offset, label) ->
+                    FilterChip(
+                        selected = offset in reminderOffsets,
+                        onClick = { reminderOffsets = if (offset in reminderOffsets) reminderOffsets - offset else reminderOffsets + offset },
+                        label = { Text(label) },
+                        enabled = dueDate != null,
+                    )
+                }
+            }
+            if (dueDate == null) Text("Сначала укажите срок", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
@@ -383,14 +529,17 @@ private fun TaskEditorDialog(
                 TextButton(onClick = ::requestDismiss) { Text("Отмена") }
                 Button(
                     onClick = {
-                        onSave(
-                            title.trim(),
-                            priority,
-                            description.trim(),
-                            projectId,
-                            scheduledDate?.toString(),
-                            updatedDueAt,
-                        )
+                        onSave(TaskUpdate(
+                            title = title.trim(),
+                            priority = priority,
+                            description = description.trim(),
+                            projectId = projectId,
+                            scheduledDate = scheduledDate?.toString(),
+                            dueAt = updatedDueAt,
+                            estimatedMinutes = estimatedMinutes.toIntOrNull(),
+                            tags = tagsText.split(',').map(String::trim).filter(String::isNotBlank).distinct(),
+                            reminderOffsets = reminderOffsets.sorted(),
+                        ))
                     },
                     enabled = title.isNotBlank(),
                 ) { Text("Сохранить") }
@@ -487,6 +636,7 @@ private fun DateField(
 }
 
 private enum class Picker { Scheduled, DueDate, DueTime }
+private val reminderChoices = listOf(0 to "В срок", 15 to "За 15 минут", 60 to "За час", 1440 to "За день")
 
 private fun dueDate(value: String): LocalDate = runCatching {
     OffsetDateTime.parse(value).toLocalDate()

@@ -19,7 +19,9 @@ class TaskRepository(private val database: TaskFlowDatabase) {
     val tasks = database.taskDao().observeActive()
     val projects = database.projectDao().observeActive()
     val archivedProjects = database.projectDao().observeArchived()
+    val columns = database.kanbanColumnDao().observeActive()
     val conflicts = database.taskConflictDao().observeAll()
+    val pendingCount = database.mutationDao().observeCount()
 
     suspend fun syncCursor(): String = database.syncStateDao().cursor(SYNC_CURSOR_KEY) ?: FIRST_SYNC_CURSOR
 
@@ -62,6 +64,21 @@ class TaskRepository(private val database: TaskFlowDatabase) {
         enqueueUpdate(updated, mapOf("column_id" to updated.columnId, "status" to "done", "expected_version" to current.version))
     }
 
+    suspend fun reopenLocalTask(taskId: String) {
+        val current = checkNotNull(database.taskDao().find(taskId)) { "Задача не найдена" }
+        if (current.deletedAt != null || current.status != "done") return
+        val inboxColumn = checkNotNull(database.kanbanColumnDao().inbox()) { "Сначала дождитесь синхронизации колонок" }
+        val updated = current.copy(columnId = inboxColumn.id, status = "inbox", updatedAt = Instant.now().toString())
+        enqueueUpdate(updated, mapOf("column_id" to updated.columnId, "status" to "inbox", "expected_version" to current.version))
+    }
+
+    suspend fun moveLocalTask(taskId: String, column: KanbanColumnEntity) {
+        val current = checkNotNull(database.taskDao().find(taskId)) { "Задача не найдена" }
+        if (current.deletedAt != null || current.columnId == column.id) return
+        val updated = current.copy(columnId = column.id, status = column.semanticStatus, kanbanPosition = Int.MAX_VALUE, updatedAt = Instant.now().toString())
+        enqueueUpdate(updated, mapOf("column_id" to column.id, "status" to column.semanticStatus, "expected_version" to current.version))
+    }
+
     suspend fun deleteLocalTask(taskId: String) {
         val current = checkNotNull(database.taskDao().find(taskId)) { "Задача не найдена" }
         if (current.deletedAt != null) return
@@ -72,14 +89,20 @@ class TaskRepository(private val database: TaskFlowDatabase) {
         }
     }
 
-    suspend fun updateLocalTask(taskId: String, title: String, priority: String, description: String, projectId: String?, scheduledDate: String?, dueAt: String?) {
+    suspend fun updateLocalTask(taskId: String, update: TaskUpdate) {
         val current = checkNotNull(database.taskDao().find(taskId)) { "Задача не найдена" }
-        require(title.isNotBlank()) { "Введите название задачи" }
-        require(priority in PRIORITIES) { "Некорректный приоритет" }
+        require(update.title.isNotBlank()) { "Введите название задачи" }
+        require(update.priority in PRIORITIES) { "Некорректный приоритет" }
+        require(update.estimatedMinutes == null || update.estimatedMinutes in 1..10_080) { "Оценка должна быть от 1 до 10080 минут" }
+        require(update.tags.size <= 20 && update.tags.all { it.length in 1..40 }) { "Не больше 20 тегов длиной до 40 символов" }
+        require(update.reminderOffsets.isEmpty() || update.dueAt != null) { "Для напоминаний укажите срок" }
         if (current.deletedAt != null) return
-        val updated = current.copy(title = title.trim(), priority = priority, description = description.trim(), projectId = projectId, scheduledDate = scheduledDate, dueAt = dueAt, updatedAt = Instant.now().toString())
-        enqueueUpdate(updated, mapOf("title" to updated.title, "priority" to updated.priority, "description" to updated.description, "project_id" to updated.projectId, "scheduled_date" to updated.scheduledDate, "due_at" to updated.dueAt, "expected_version" to current.version))
+        val updated = current.copy(title = update.title.trim(), priority = update.priority, description = update.description.trim(), projectId = update.projectId, scheduledDate = update.scheduledDate, dueAt = update.dueAt, estimatedMinutes = update.estimatedMinutes, tags = update.tags.distinct(), reminderOffsets = update.reminderOffsets.distinct().sorted(), updatedAt = Instant.now().toString())
+        enqueueUpdate(updated, mapOf("title" to updated.title, "priority" to updated.priority, "description" to updated.description, "project_id" to updated.projectId, "scheduled_date" to updated.scheduledDate, "due_at" to updated.dueAt, "estimated_minutes" to updated.estimatedMinutes, "tags" to updated.tags, "reminder_offsets" to updated.reminderOffsets, "expected_version" to current.version))
     }
+
+    suspend fun updateLocalTask(taskId: String, title: String, priority: String, description: String, projectId: String?, scheduledDate: String?, dueAt: String?) =
+        updateLocalTask(taskId, TaskUpdate(title, priority, description, projectId, scheduledDate, dueAt, null, emptyList(), emptyList()))
 
     suspend fun pendingMutations(limit: Int) = database.mutationDao().nextBatch(limit)
     suspend fun removeMutations(ids: List<String>) = database.mutationDao().delete(ids)

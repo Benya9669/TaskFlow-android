@@ -23,6 +23,7 @@ interface ProjectDao {
     @Query("SELECT * FROM projects WHERE deletedAt IS NULL AND archivedAt IS NOT NULL ORDER BY name COLLATE NOCASE")
     fun observeArchived(): Flow<List<ProjectEntity>>
     @Query("SELECT * FROM projects WHERE id = :id") suspend fun find(id: String): ProjectEntity?
+    @Query("SELECT ownerId FROM projects LIMIT 1") suspend fun anyOwnerId(): String?
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(project: ProjectEntity)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertAll(projects: List<ProjectEntity>)
 }
@@ -35,14 +36,19 @@ interface KanbanColumnDao {
     suspend fun inbox(): KanbanColumnEntity?
     @Query("SELECT * FROM kanban_columns WHERE deletedAt IS NULL AND semanticStatus = :status ORDER BY position LIMIT 1")
     suspend fun byStatus(status: String): KanbanColumnEntity?
+    @Query("SELECT ownerId FROM kanban_columns LIMIT 1") suspend fun anyOwnerId(): String?
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertAll(columns: List<KanbanColumnEntity>)
 }
 
 @Dao
 interface MutationDao {
+    @Query("SELECT COUNT(*) FROM pending_mutations") fun observeCount(): Flow<Int>
     @Query("SELECT * FROM pending_mutations ORDER BY createdAt LIMIT :limit") suspend fun nextBatch(limit: Int): List<PendingMutationEntity>
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insert(mutation: PendingMutationEntity)
     @Query("DELETE FROM pending_mutations WHERE id IN (:ids)") suspend fun delete(ids: List<String>)
+    @Query("SELECT * FROM pending_mutations WHERE entityType = :entityType AND taskId = :entityId ORDER BY createdAt") suspend fun forEntity(entityType: String, entityId: String): List<PendingMutationEntity>
+    @Query("DELETE FROM pending_mutations WHERE entityType = :entityType AND taskId = :entityId") suspend fun deleteForEntity(entityType: String, entityId: String)
+    @Query("UPDATE pending_mutations SET bodyJson = :bodyJson WHERE id = :id") suspend fun updateBody(id: String, bodyJson: String)
 }
 
 @Dao
@@ -56,4 +62,11 @@ interface TaskConflictDao {
     @Query("SELECT * FROM task_conflicts ORDER BY createdAt") fun observeAll(): Flow<List<TaskConflictEntity>>
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insert(conflict: TaskConflictEntity)
     @Query("DELETE FROM task_conflicts WHERE mutationId = :mutationId") suspend fun delete(mutationId: String)
+}
+
+@Dao
+interface ProjectConflictDao {
+    @Query("SELECT * FROM project_conflicts ORDER BY createdAt") fun observeAll(): Flow<List<ProjectConflictEntity>>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insert(conflict: ProjectConflictEntity)
+    @Query("DELETE FROM project_conflicts WHERE mutationId = :mutationId") suspend fun delete(mutationId: String)
 }

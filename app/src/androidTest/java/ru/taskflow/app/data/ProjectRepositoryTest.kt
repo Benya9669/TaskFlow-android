@@ -5,15 +5,15 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.MockResponse
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import ru.taskflow.app.data.local.TaskFlowDatabase
+import ru.taskflow.app.data.local.KanbanColumnEntity
 import ru.taskflow.app.data.remote.TaskFlowApiFactory
 import ru.taskflow.app.data.session.SessionTokens
 import ru.taskflow.app.data.session.TokenStore
@@ -41,6 +41,9 @@ class ProjectRepositoryTest {
             TaskFlowApiFactory(tokenStore).create(tokenStore.serverUrl()!!),
             database,
         )
+        runBlocking {
+            database.kanbanColumnDao().upsertAll(listOf(KanbanColumnEntity("column", "owner-1", "Inbox", "#2563EB", "inbox", 0, "2026-08-10T09:00:00Z", "2026-08-10T09:00:00Z", 1, null)))
+        }
     }
 
     @After
@@ -51,12 +54,7 @@ class ProjectRepositoryTest {
     }
 
     @Test
-    fun createUpdateArchiveAndRestorePersistServerVersions() = runBlocking {
-        server.enqueue(projectResponse("Inbox", "#2563EB", 1, null))
-        server.enqueue(projectResponse("Work", "#7C3AED", 2, null))
-        server.enqueue(projectResponse("Work", "#7C3AED", 3, "2026-08-10T10:00:00Z"))
-        server.enqueue(projectResponse("Work", "#7C3AED", 4, null))
-
+    fun createUpdateArchiveAndRestoreCoalesceIntoDurableMutation() = runBlocking {
         repository.create("Inbox", "#2563EB")
         val created = repository.active.first().single()
         repository.update(created, "Work", "#7C3AED")
@@ -67,17 +65,32 @@ class ProjectRepositoryTest {
 
         val restored = repository.active.first().single()
         assertEquals("Work", restored.name)
-        assertEquals(4, restored.version)
-        assertEquals("POST", server.takeRequest().method)
-        assertEquals("PATCH", server.takeRequest().method)
-        assertEquals("POST", server.takeRequest().method)
-        val restoreRequest = server.takeRequest()
-        assertEquals("DELETE", restoreRequest.method)
-        assertTrue(restoreRequest.body.readUtf8().contains("\"expected_version\":3"))
+        assertEquals(1, restored.version)
+        val mutation = database.mutationDao().nextBatch(10).single()
+        assertEquals("project", mutation.entityType)
+        assertEquals("create", mutation.operation)
+        assert(mutation.bodyJson.orEmpty().contains("\"name\":\"Work\""))
+        assert(mutation.bodyJson.orEmpty().contains("\"archived\":false"))
     }
 
-    private fun projectResponse(name: String, color: String, version: Int, archivedAt: String?) =
-        MockResponse().setResponseCode(200).setHeader("Content-Type", "application/json").setBody(
-            """{"project":{"id":"project-1","owner_id":"owner-1","name":"$name","color":"$color","created_at":"2026-08-10T09:00:00Z","updated_at":"2026-08-10T10:00:00Z","version":$version,"deleted_at":null,"archived_at":${archivedAt?.let { "\"$it\"" } ?: "null"}}}""",
-        )
+    @Test
+    fun syncSendsProjectEntityAndClearsDurableMutation() = runBlocking {
+        repository.create("Offline", "#2563EB")
+        val local = repository.active.first().single()
+        server.enqueue(MockResponse().setHeader("Content-Type", "application/json").setBody(
+            """{"mutations":[{"id":"${database.mutationDao().nextBatch(10).single().id}","status":201,"response":{"project":{"id":"${local.id}","owner_id":"owner-1","name":"Offline","color":"#2563eb","created_at":"2026-08-10T09:00:00Z","updated_at":"2026-08-10T09:00:00Z","version":1,"deleted_at":null,"archived_at":null}}}]}""",
+        ))
+        server.enqueue(MockResponse().setHeader("Content-Type", "application/json").setBody(
+            """{"snapshot":"snapshot","cursor":"cursor","has_more":false,"next_cursor":null,"tasks":[],"projects":[],"kanban_columns":[]}""",
+        ))
+
+        SyncRepository(TaskFlowApiFactory(tokenStore).create(tokenStore.serverUrl()!!), TaskRepository(database), repository).pushAndPull()
+
+        val mutationRequest = server.takeRequest()
+        assertEquals("/api/v1/sync/mutations", mutationRequest.path)
+        val body = mutationRequest.body.readUtf8()
+        assert(body.contains("\"entity\":\"project\""))
+        assert(body.contains("\"project_id\":\"${local.id}\""))
+        assertEquals(0, database.mutationDao().nextBatch(10).size)
+    }
 }

@@ -1,6 +1,6 @@
 # TaskFlow Android Roadmap
 
-Android-клиент развивается отдельно от `../web` и использует стабильный API `/api/v1`. Текущий продуктовый статус: **0.3.0-alpha**. Технический offline foundation и test gate готовы, но UI/UX и функциональное покрытие ещё не соответствуют публичной beta.
+Android-клиент развивается отдельно от `../web` и использует стабильный API `/api/v1`. Текущий продуктовый статус: **0.3.0-beta.2**. Технический offline foundation и test gate готовы, но UI/UX и функциональное покрытие ещё не соответствуют публичной beta.
 
 Обозначения: `[x]` готово и проверено, `[~]` реализовано частично, `[ ]` запланировано.
 
@@ -20,7 +20,7 @@ Android-клиент развивается отдельно от `../web` и и
 - [x] Adaptive shell: bottom navigation на телефоне и navigation rail при ширине от 720dp.
 - [x] Разделы «Сегодня», «Входящие», «Проекты», «Ещё».
 - [x] «Сегодня» показывает задачи на текущую дату; «Входящие» поддерживают быстрый offline create.
-- [x] Список задач: завершение, удаление, редактирование названия, описания, приоритета, проекта, даты и срока.
+- [x] Список задач: открытие карточки, меню действий, Undo завершения/удаления и расширенный редактор названия, описания, приоритета, проекта, дат, оценки, тегов и напоминаний.
 - [x] Локальные фильтры по проекту, статусу и приоритету, поиск и сортировка.
 - [x] Список проектов с количеством задач, active/archive tabs и CRUD через API.
 - [x] Empty, loading и error состояния для существующих экранов.
@@ -43,8 +43,8 @@ Android-клиент развивается отдельно от `../web` и и
 - [x] Instrumented data tests: offline CRUD, retry, conflict, pagination, refresh и migration.
 - [x] Compose UI tests: login, offline inbox create, обе ветки conflict dialog.
 - [x] Проверены light/dark theme, phone и wide layout на AVD.
-- [x] Проверен Android login, pull и task mutation push с чистым web `v0.2.0`.
-- [x] Debug APK `0.3.0-beta.1` собирается и запускается; tracked secrets и ключи не найдены.
+- [x] Проверены Android login, pull, task mutation и project mutation с production web `v0.3.0`.
+- [x] Debug APK `0.3.0-beta.2` собирается и запускается; tracked secrets и ключи не найдены.
 
 ## 0.3.0 — ежедневный task flow
 
@@ -54,8 +54,8 @@ Android-клиент развивается отдельно от `../web` и и
 
 - [~] «Сегодня» и «Входящие» показывают active/completed sections, счётчик и ручную sync action; pull-to-refresh и feedback после sync остаются.
 - [~] ISO-поля планирования и срока заменены Material date/time pickers с clear date; overdue presentation остаётся.
-- [ ] Улучшить быстрый ввод: autofocus, submit с IME, быстрый выбор приоритета/даты и snackbar с Undo после delete/complete.
-- [ ] Сделать task detail/editor полноценным bottom sheet или отдельным экраном с валидацией, сохранением и unsaved-change handling.
+- [~] Быстрый ввод поддерживает submit с IME и быстрый выбор приоритета/даты; autofocus остаётся осознанно выключен, Undo после delete/complete готов.
+- [x] Сделать task detail/editor полноценным bottom sheet с валидацией, оценкой времени, тегами, напоминаниями и unsaved-change handling.
 - [x] Реализовать поиск задач по title и description в локальном состоянии и сортировку результатов.
 - [x] Сделать «Проекты» продуктовым экраном: active/archive tabs, task counts, цвет и переход к отфильтрованному списку.
 - [x] Сделать «Ещё» рабочим разделом: профиль, сервер, sync status, manual refresh, notification status, logout и app version.
@@ -63,9 +63,9 @@ Android-клиент развивается отдельно от `../web` и и
 
 ### Поддержка API и данных
 
-- [~] Android использует стабильные create/update/archive/restore проектов с version guard; durable project outbox ещё не добавлен.
-- [ ] Добавить Room migration и conflict policy для project mutations.
-- [~] Project API contract покрыт Android-интеграционным тестом с MockWebServer; внешний E2E на чистом server tag остаётся.
+- [x] Добавить идемпотентные create/update/archive/restore проектов с version guard и durable project outbox.
+- [x] Добавить Room v2-to-v3 migration и явную conflict policy для project mutations.
+- [x] Project mutation API покрыт web API-тестом, Android MockWebServer-тестом и внешним E2E на production server tag `v0.3.0`.
 
 ### Gate 0.3.0
 
@@ -78,7 +78,7 @@ Android-клиент развивается отдельно от `../web` и и
 
 Цель: пользователь может вести основные сущности TaskFlow с Android без возврата в web для обычной работы.
 
-- [ ] Kanban board по статусам, перемещение задач между колонками и project filter.
+- [~] Kanban board по колонкам, project filter и offline-перенос через доступное меню; drag-and-drop и ручной порядок карточек остаются.
 - [x] Создание и редактирование проектов, archive/restore, выбор project color.
 - [ ] Subtasks и checklist items с offline sync.
 - [ ] Notes, folders и links с offline-first model.

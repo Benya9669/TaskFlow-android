@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import ru.taskflow.app.data.SyncRepository
 import ru.taskflow.app.data.TaskRepository
 import ru.taskflow.app.data.ProjectRepository
+import ru.taskflow.app.data.TaskUpdate
 import ru.taskflow.app.data.local.TaskEntity
 import ru.taskflow.app.data.local.TaskConflictEntity
 import ru.taskflow.app.data.remote.TaskFlowApiFactory
@@ -22,7 +23,10 @@ class TaskListViewModel(private val tasks: TaskRepository, private val projectsR
     val taskList = tasks.tasks.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val projects = tasks.projects.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val archivedProjects = tasks.archivedProjects.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val kanbanColumns = tasks.columns.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val conflicts = tasks.conflicts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val projectConflicts = projectsRepository.conflicts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val pendingCount = tasks.pendingCount.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     private val _syncing = MutableStateFlow(false)
     val syncing = _syncing
     private val _syncError = MutableStateFlow<String?>(null)
@@ -55,7 +59,7 @@ class TaskListViewModel(private val tasks: TaskRepository, private val projectsR
         viewModelScope.launch {
             _projectBusy.value = true
             runCatching { action() }
-                .onSuccess { _syncError.value = null }
+                .onSuccess { _syncError.value = null; TaskSyncScheduler.enqueue(appContext) }
                 .onFailure { _syncError.value = it.message ?: "Не удалось изменить проект" }
             _projectBusy.value = false
         }
@@ -73,12 +77,20 @@ class TaskListViewModel(private val tasks: TaskRepository, private val projectsR
         viewModelScope.launch { runCatching { tasks.completeLocalTask(taskId) }.onSuccess { TaskSyncScheduler.enqueue(appContext) }; refresh() }
     }
 
+    fun reopenTask(taskId: String) {
+        viewModelScope.launch { runCatching { tasks.reopenLocalTask(taskId) }.onSuccess { TaskSyncScheduler.enqueue(appContext) }; refresh() }
+    }
+
+    fun moveTask(taskId: String, column: ru.taskflow.app.data.local.KanbanColumnEntity) {
+        viewModelScope.launch { runCatching { tasks.moveLocalTask(taskId, column) }.onSuccess { TaskSyncScheduler.enqueue(appContext) }; refresh() }
+    }
+
     fun deleteTask(taskId: String) {
         viewModelScope.launch { runCatching { tasks.deleteLocalTask(taskId) }.onSuccess { TaskSyncScheduler.enqueue(appContext) }; refresh() }
     }
 
-    fun updateTask(taskId: String, title: String, priority: String, description: String, projectId: String?, scheduledDate: String?, dueAt: String?) {
-        viewModelScope.launch { runCatching { tasks.updateLocalTask(taskId, title, priority, description, projectId, scheduledDate, dueAt) }.onSuccess { TaskSyncScheduler.enqueue(appContext); TaskReminderWorker.schedule(appContext, taskId, title, dueAt) }; refresh() }
+    fun updateTask(taskId: String, update: TaskUpdate) {
+        viewModelScope.launch { runCatching { tasks.updateLocalTask(taskId, update) }.onSuccess { TaskSyncScheduler.enqueue(appContext); TaskReminderWorker.schedule(appContext, taskId, update.title, update.dueAt) }; refresh() }
     }
 
     fun keepServerVersion(mutationId: String) {
@@ -87,6 +99,14 @@ class TaskListViewModel(private val tasks: TaskRepository, private val projectsR
 
     fun keepLocalVersion(conflict: TaskConflictEntity) {
         viewModelScope.launch { runCatching { tasks.keepLocalVersion(conflict) }.onSuccess { TaskSyncScheduler.enqueue(appContext) } }
+    }
+
+    fun keepServerProjectVersion(mutationId: String) {
+        viewModelScope.launch { projectsRepository.keepServerVersion(mutationId) }
+    }
+
+    fun keepLocalProjectVersion(conflict: ru.taskflow.app.data.local.ProjectConflictEntity) {
+        viewModelScope.launch { runCatching { projectsRepository.keepLocalVersion(conflict) }.onSuccess { TaskSyncScheduler.enqueue(appContext) } }
     }
 
     fun today(tasks: List<TaskEntity>, date: String): List<TaskEntity> = tasks.filter { it.scheduledDate == date }
@@ -99,6 +119,7 @@ class TaskListViewModelFactory(private val database: ru.taskflow.app.data.local.
         val tasks = TaskRepository(database)
         val serverUrl = checkNotNull(tokenStore.serverUrl()) { "Сервер не настроен" }
         val api = TaskFlowApiFactory(tokenStore).create(serverUrl)
-        return TaskListViewModel(tasks, ProjectRepository(api, database), SyncRepository(api, tasks), appContext) as T
+        val projects = ProjectRepository(api, database)
+        return TaskListViewModel(tasks, projects, SyncRepository(api, tasks, projects), appContext) as T
     }
 }

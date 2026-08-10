@@ -52,6 +52,18 @@ class TaskRepositoryTest {
         assertEquals(1, repository.pendingMutations(10).size)
     }
 
+    @Test fun extendedTaskFieldsAreStoredInOfflineMutation() = runBlocking {
+        val task = repository.createInboxTask("Расширенная задача")
+        repository.updateLocalTask(task.id, TaskUpdate("Расширенная задача", "high", "Описание", null, null, "2026-08-11T09:00:00Z", 90, listOf("работа", "важно"), listOf(15, 60)))
+
+        val stored = database.taskDao().find(task.id)!!
+        assertEquals(90, stored.estimatedMinutes)
+        assertEquals(listOf("работа", "важно"), stored.tags)
+        val body = repository.pendingMutations(10).last().bodyJson.orEmpty()
+        assert(body.contains("\"estimated_minutes\":90"))
+        assert(body.contains("\"reminder_offsets\":[15,60]"))
+    }
+
     private fun column(id: String, status: String) = KanbanColumnEntity(id, "owner", id, "#000000", status, 0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", 1, null)
 }
 

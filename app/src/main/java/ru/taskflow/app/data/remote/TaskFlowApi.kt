@@ -61,6 +61,13 @@ data class ProjectListResponse(val projects: List<ProjectDto>)
 data class KanbanColumnDto(val id: String, @Json(name = "owner_id") val ownerId: String, val name: String, val color: String, @Json(name = "semantic_status") val semanticStatus: String, val position: Int, @Json(name = "created_at") val createdAt: String, @Json(name = "updated_at") val updatedAt: String, val version: Int, @Json(name = "deleted_at") val deletedAt: String?)
 data class SyncResponse(val snapshot: String, val cursor: String, @Json(name = "has_more") val hasMore: Boolean, @Json(name = "next_cursor") val nextCursor: String?, val tasks: List<TaskDto>, val projects: List<ProjectDto>, @Json(name = "kanban_columns") val kanbanColumns: List<KanbanColumnDto>)
 data class MutationBatch(val mutations: List<MutationDto>)
-data class MutationDto(val id: String, val operation: String, @Json(name = "task_id") val taskId: String, val body: Map<String, Any?>? = null)
+data class MutationDto(
+    val id: String,
+    val operation: String,
+    @Json(name = "task_id") val taskId: String?,
+    val body: Map<String, Any?>? = null,
+    val entity: String = "task",
+    @Json(name = "project_id") val projectId: String? = null,
+)
 data class MutationBatchResponse(val mutations: List<MutationResultDto>)
 data class MutationResultDto(val id: String, val status: Int, val response: Map<String, Any?>)

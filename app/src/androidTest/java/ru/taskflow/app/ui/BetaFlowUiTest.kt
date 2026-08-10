@@ -24,6 +24,8 @@ import ru.taskflow.app.ui.auth.SessionUiState
 import ru.taskflow.app.ui.tasks.ConflictDialog
 import ru.taskflow.app.ui.tasks.TaskListContent
 import ru.taskflow.app.ui.projects.ProjectListContent
+import ru.taskflow.app.ui.kanban.KanbanBoardContent
+import ru.taskflow.app.data.local.KanbanColumnEntity
 
 @RunWith(AndroidJUnit4::class)
 class BetaFlowUiTest {
@@ -45,11 +47,12 @@ class BetaFlowUiTest {
         var createdTitle: String? = null
         compose.setContent {
             MaterialTheme {
-                TaskListContent(emptyList(), emptyList(), "Входящие пусты", "", { title, _, _ -> createdTitle = title }, {}, {}, { _, _, _, _, _, _, _ -> })
+                TaskListContent(emptyList(), emptyList(), "Входящие пусты", "", { title, _, _ -> createdTitle = title }, {}, {}, { _, _ -> })
             }
         }
-        compose.onNodeWithText("Новая задача").performClick().performTextInput("Работать офлайн")
-        compose.onNodeWithText("Добавить во входящие").performClick()
+        compose.onNodeWithText("Новая задача").performClick()
+        compose.onNodeWithText("Название").performClick().performTextInput("Работать офлайн")
+        compose.onNodeWithText("Добавить").performClick()
         compose.runOnIdle { assertEquals("Работать офлайн", createdTitle) }
     }
 
@@ -59,7 +62,7 @@ class BetaFlowUiTest {
         val completed = active.copy(id = "done", title = "Готовая", status = "done")
         compose.setContent {
             MaterialTheme {
-                TaskListContent(listOf(active, completed), emptyList(), "", "", onComplete = {}, onDelete = {}, onUpdate = { _, _, _, _, _, _, _ -> }, onRefresh = { refreshes++ })
+                TaskListContent(listOf(active, completed), emptyList(), "", "", onComplete = {}, onDelete = {}, onUpdate = { _, _ -> }, onRefresh = { refreshes++ })
             }
         }
         compose.onNodeWithText("1 активная задача").assertIsDisplayed()
@@ -72,12 +75,12 @@ class BetaFlowUiTest {
         val task = TaskEntity("task", "owner", null, "column", "Запланировать встречу", "", "inbox", "normal", null, null, null, 0, null, emptyList(), emptyList(), "", "", 1, null)
         compose.setContent {
             MaterialTheme {
-                TaskListContent(listOf(task), emptyList(), "", "", onComplete = {}, onDelete = {}, onUpdate = { _, _, _, _, _, _, _ -> })
+                TaskListContent(listOf(task), emptyList(), "", "", onComplete = {}, onDelete = {}, onUpdate = { _, _ -> })
             }
         }
-        compose.onNodeWithContentDescription("Редактировать").performClick()
+        compose.onNodeWithText("Запланировать встречу").performClick()
         compose.onNodeWithText("Запланировать").performClick()
-        compose.onAllNodesWithText("Готово").assertCountEquals(2)
+        compose.onNodeWithText("Готово").assertIsDisplayed()
     }
 
     @Test fun conflictDialogKeepsLocalVersion() {
@@ -100,7 +103,8 @@ class BetaFlowUiTest {
     @Test fun taskSearchFiltersLocalResults() {
         val alpha = TaskEntity("alpha", "owner", null, "column", "Alpha task", "", "inbox", "normal", null, null, null, 0, null, emptyList(), emptyList(), "", "2026-08-10T10:00:00Z", 1, null)
         val beta = alpha.copy(id = "beta", title = "Beta task")
-        compose.setContent { MaterialTheme { TaskListContent(listOf(alpha, beta), emptyList(), "", "", onComplete = {}, onDelete = {}, onUpdate = { _, _, _, _, _, _, _ -> }) } }
+        compose.setContent { MaterialTheme { TaskListContent(listOf(alpha, beta), emptyList(), "", "", onComplete = {}, onDelete = {}, onUpdate = { _, _ -> }) } }
+        compose.onNodeWithContentDescription("Открыть поиск").performClick()
         compose.onNodeWithText("Поиск задач").performClick().performTextInput("Alpha")
         compose.onNodeWithText("Alpha task").assertIsDisplayed()
         compose.onAllNodesWithText("Beta task").assertCountEquals(0)
@@ -109,11 +113,15 @@ class BetaFlowUiTest {
     @Test fun taskDeleteRequiresConfirmation() {
         var deleted: String? = null
         val task = TaskEntity("delete-me", "owner", null, "column", "Удалить после подтверждения", "", "inbox", "normal", null, null, null, 0, null, emptyList(), emptyList(), "", "", 1, null)
-        compose.setContent { MaterialTheme { TaskListContent(listOf(task), emptyList(), "", "", onComplete = {}, onDelete = { deleted = it }, onUpdate = { _, _, _, _, _, _, _ -> }) } }
-        compose.onNodeWithContentDescription("Удалить").performClick()
+        compose.setContent { MaterialTheme { TaskListContent(listOf(task), emptyList(), "", "", onComplete = {}, onDelete = { deleted = it }, onUpdate = { _, _ -> }) } }
+        compose.onNodeWithContentDescription("Действия задачи").performClick()
+        compose.onNodeWithText("Удалить").performClick()
         compose.runOnIdle { assertEquals(null, deleted) }
         compose.onNodeWithText("Удалить").performClick()
-        compose.runOnIdle { assertEquals("delete-me", deleted) }
+        compose.onNodeWithText("Задача удалена").assertIsDisplayed()
+        compose.onNodeWithText("Отменить").performClick()
+        compose.onNodeWithText("Удалить после подтверждения").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(null, deleted) }
     }
 
     @Test fun projectCreateDialogReturnsNameAndColor() {
@@ -127,6 +135,17 @@ class BetaFlowUiTest {
         compose.onNodeWithText("Название").performClick().performTextInput("Мобильный проект")
         compose.onNodeWithText("Сохранить").performClick()
         compose.runOnIdle { assertEquals("Мобильный проект", created?.first) }
+    }
+
+    @Test fun kanbanMovesTaskToSelectedColumn() {
+        val inbox = KanbanColumnEntity("inbox", "owner", "Входящие", "#2563EB", "inbox", 0, "", "", 1, null)
+        val done = KanbanColumnEntity("done", "owner", "Завершено", "#16A34A", "done", 1, "", "", 1, null)
+        val task = TaskEntity("task", "owner", null, "inbox", "Карточка канбан", "", "inbox", "normal", null, null, null, 0, null, emptyList(), emptyList(), "", "", 1, null)
+        var movedTo: String? = null
+        compose.setContent { MaterialTheme { KanbanBoardContent(listOf(inbox, done), listOf(task), emptyList()) { _, column -> movedTo = column.id } } }
+        compose.onNodeWithContentDescription("Переместить задачу").performClick()
+        compose.onNodeWithContentDescription("Переместить в Завершено").performClick()
+        compose.runOnIdle { assertEquals("done", movedTo) }
     }
 
     @Test fun loginRemainsUsableWithLargeFontScale() {

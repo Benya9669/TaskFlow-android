@@ -5,7 +5,7 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 
-class SyncRepository(private val api: TaskFlowApi, private val tasks: TaskRepository) {
+class SyncRepository(private val api: TaskFlowApi, private val tasks: TaskRepository, private val projects: ProjectRepository? = null) {
     suspend fun pull() {
         var cursor: String? = null
         var snapshot: String? = null
@@ -26,7 +26,14 @@ class SyncRepository(private val api: TaskFlowApi, private val tasks: TaskReposi
             val response = api.sendMutations(
                 ru.taskflow.app.data.remote.MutationBatch(
                     pending.map { mutation ->
-                        ru.taskflow.app.data.remote.MutationDto(mutation.id, mutation.operation, mutation.taskId, mutation.bodyJson?.let(mapAdapter::fromJson))
+                        ru.taskflow.app.data.remote.MutationDto(
+                            mutation.id,
+                            mutation.operation,
+                            mutation.taskId.takeIf { mutation.entityType == "task" },
+                            mutation.bodyJson?.let(mapAdapter::fromJson),
+                            mutation.entityType,
+                            mutation.taskId.takeIf { mutation.entityType == "project" },
+                        )
                     },
                 ),
             )
@@ -34,9 +41,15 @@ class SyncRepository(private val api: TaskFlowApi, private val tasks: TaskReposi
             tasks.removeMutations(response.mutations.filter { it.status in 200..299 }.map { it.id })
             response.mutations.filter { it.status == 409 }.forEach { result ->
                 val mutation = byId[result.id] ?: return@forEach
-                val currentTask = result.response["current_task"] as? Map<*, *> ?: return@forEach
-                val normalizedTask = currentTask.entries.associate { (key, value) -> key.toString() to value }
-                taskAdapter.fromJson(mapAdapter.toJson(normalizedTask))?.let { tasks.saveConflict(mutation, it) }
+                if (mutation.entityType == "project") {
+                    val currentProject = result.response["current_project"] as? Map<*, *> ?: return@forEach
+                    val normalized = currentProject.entries.associate { (key, value) -> key.toString() to value }
+                    projectAdapter.fromJson(mapAdapter.toJson(normalized))?.let { projects?.saveConflict(mutation, it) }
+                } else {
+                    val currentTask = result.response["current_task"] as? Map<*, *> ?: return@forEach
+                    val normalizedTask = currentTask.entries.associate { (key, value) -> key.toString() to value }
+                    taskAdapter.fromJson(mapAdapter.toJson(normalizedTask))?.let { tasks.saveConflict(mutation, it) }
+                }
             }
         }
         pull()
@@ -47,5 +60,6 @@ class SyncRepository(private val api: TaskFlowApi, private val tasks: TaskReposi
         val moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
         val mapAdapter = moshi.adapter<Map<String, Any?>>(Types.newParameterizedType(Map::class.java, String::class.java, Any::class.java))
         val taskAdapter = moshi.adapter(ru.taskflow.app.data.remote.TaskDto::class.java)
+        val projectAdapter = moshi.adapter(ru.taskflow.app.data.remote.ProjectDto::class.java)
     }
 }

@@ -44,7 +44,7 @@ class SyncRepositoryTest {
     @After fun tearDown() = database.close()
 
     @Test fun pullFollowsPaginationAndStoresFinalCursor() = runBlocking {
-        val api = object : TaskFlowApi {
+        val api = object : ProjectAwareTestApi() {
             var calls = 0
             override suspend fun sync(since: String, cursor: String?, snapshot: String?, limit: Int): SyncResponse {
                 calls++
@@ -91,7 +91,7 @@ class SyncRepositoryTest {
         database.kanbanColumnDao().upsertAll(listOf(KanbanColumnEntity("column", "owner", "Inbox", "#000000", "inbox", 0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", 1, null)))
         val task = repository.createInboxTask("Retry task")
         val mutation = repository.pendingMutations(10).single()
-        val api = object : TaskFlowApi {
+        val api = object : ProjectAwareTestApi() {
             var sends = 0
             override suspend fun sendMutations(request: MutationBatch): MutationBatchResponse {
                 sends++
@@ -116,4 +116,14 @@ class SyncRepositoryTest {
     private fun task(id: String) = TaskDto(id, "owner", null, "column", id, "", "inbox", "normal", null, null, null, 0, null, emptyList(), emptyList(), "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", 1, null)
     private fun page(snapshot: String, cursor: String, hasMore: Boolean, next: String?, tasks: List<TaskDto>) = SyncResponse(snapshot, cursor, hasMore, next, tasks, emptyList<ProjectDto>(), emptyList<KanbanColumnDto>())
     private fun syncJson() = "{\"snapshot\":\"snapshot\",\"cursor\":\"cursor\",\"has_more\":false,\"next_cursor\":null,\"tasks\":[],\"projects\":[],\"kanban_columns\":[]}"
+}
+
+private abstract class ProjectAwareTestApi : TaskFlowApi {
+    override suspend fun projects(includeArchived: Boolean) = throw UnsupportedOperationException()
+    override suspend fun createProject(request: ru.taskflow.app.data.remote.ProjectWriteRequest) = throw UnsupportedOperationException()
+    override suspend fun updateProject(projectId: String, request: ru.taskflow.app.data.remote.ProjectUpdateRequest) = throw UnsupportedOperationException()
+    override suspend fun archiveProject(projectId: String, request: ru.taskflow.app.data.remote.VersionGuardRequest) = throw UnsupportedOperationException()
+    override suspend fun restoreProject(projectId: String, request: ru.taskflow.app.data.remote.VersionGuardRequest) = throw UnsupportedOperationException()
+    override suspend fun me() = throw UnsupportedOperationException()
+    override suspend fun updateAccount(request: ru.taskflow.app.data.remote.AccountUpdateRequest) = throw UnsupportedOperationException()
 }

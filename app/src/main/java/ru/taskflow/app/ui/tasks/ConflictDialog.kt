@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import ru.taskflow.app.data.local.TaskConflictEntity
+import ru.taskflow.app.data.local.ProjectConflictEntity
 import ru.taskflow.app.ui.theme.TaskFlowSpace
 
 @Composable
@@ -32,6 +33,24 @@ fun ConflictDialog(conflict: TaskConflictEntity, onKeepServer: () -> Unit, onKee
                     local["title"] as? String ?: conflict.serverTitle,
                     local["priority"] as? String ?: conflict.serverPriority,
                 )
+            }
+        },
+        confirmButton = { Button(onClick = onKeepLocal) { Text("Оставить локальную") } },
+        dismissButton = { TextButton(onClick = onKeepServer) { Text("Принять серверную") } },
+    )
+}
+
+@Composable
+fun ProjectConflictDialog(conflict: ProjectConflictEntity, onKeepServer: () -> Unit, onKeepLocal: () -> Unit) {
+    val local = localBodyAdapter.fromJson(conflict.localBodyJson).orEmpty()
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text("Конфликт проекта") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(TaskFlowSpace.md)) {
+                Text("Проект был изменён на другом устройстве. Выберите версию, которую нужно сохранить.")
+                ConflictVersion("Сервер", conflict.serverName, conflict.serverColor)
+                ConflictVersion("Локально", local["name"] as? String ?: conflict.serverName, local["color"] as? String ?: conflict.serverColor)
             }
         },
         confirmButton = { Button(onClick = onKeepLocal) { Text("Оставить локальную") } },

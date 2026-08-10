@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Workspaces
+import androidx.compose.material.icons.outlined.ViewKanban
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -57,13 +58,16 @@ import ru.taskflow.app.ui.tasks.TaskListContent
 import ru.taskflow.app.ui.tasks.TaskListViewModel
 import ru.taskflow.app.ui.tasks.TaskListViewModelFactory
 import ru.taskflow.app.ui.tasks.ConflictDialog
+import ru.taskflow.app.ui.tasks.ProjectConflictDialog
 import ru.taskflow.app.ui.projects.ProjectListContent
+import ru.taskflow.app.ui.kanban.KanbanBoardContent
 import ru.taskflow.app.ui.settings.MoreContent
 import ru.taskflow.app.ui.theme.TaskFlowSpace
 
 private enum class Destination(val label: String, val icon: ImageVector) {
     Today("Сегодня", Icons.Outlined.CalendarToday),
     Inbox("Входящие", Icons.Outlined.Inbox),
+    Board("Доска", Icons.Outlined.ViewKanban),
     Projects("Проекты", Icons.Outlined.Workspaces),
     More("Ещё", Icons.Outlined.MoreHoriz),
 }
@@ -85,15 +89,18 @@ fun TaskFlowApp(sharedText: String? = null, taskIdFromLink: String? = null, veri
     val tasks by taskListViewModel.taskList.collectAsStateWithLifecycle()
     val projects by taskListViewModel.projects.collectAsStateWithLifecycle()
     val archivedProjects by taskListViewModel.archivedProjects.collectAsStateWithLifecycle()
+    val kanbanColumns by taskListViewModel.kanbanColumns.collectAsStateWithLifecycle()
     val conflicts by taskListViewModel.conflicts.collectAsStateWithLifecycle()
+    val projectConflicts by taskListViewModel.projectConflicts.collectAsStateWithLifecycle()
+    val pendingCount by taskListViewModel.pendingCount.collectAsStateWithLifecycle()
     val syncing by taskListViewModel.syncing.collectAsStateWithLifecycle()
     val syncError by taskListViewModel.syncError.collectAsStateWithLifecycle()
     val projectBusy by taskListViewModel.projectBusy.collectAsStateWithLifecycle()
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
-    val updateTask: (String, String, String, String, String?, String?, String?) -> Unit = { id, title, priority, description, projectId, scheduledDate, dueAt ->
-        taskListViewModel.updateTask(id, title, priority, description, projectId, scheduledDate, dueAt)
+    val updateTask: (String, ru.taskflow.app.data.TaskUpdate) -> Unit = { id, update ->
+        taskListViewModel.updateTask(id, update)
         if (
-            dueAt != null &&
+            update.dueAt != null &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -131,7 +138,7 @@ fun TaskFlowApp(sharedText: String? = null, taskIdFromLink: String? = null, veri
                     NavigationRailItem(selected = destination == item && selectedProjectId == null, onClick = { destination = item; selectedProjectId = null }, icon = { Icon(item.icon, item.label) }, label = { Text(item.label) })
                 }
             }
-            TaskFlowContent(destination, PaddingValues(), tasks, projects, archivedProjects, selectedProjectId, taskIdFromLink, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask, updateTask, taskListViewModel::refresh, syncing, syncError, taskListViewModel::dismissError, projectBusy, openProjectTasks, taskListViewModel::createProject, taskListViewModel::updateProject, taskListViewModel::archiveProject, taskListViewModel::restoreProject, TokenStore(context).serverUrl(), notificationsEnabled, profile, notificationSettings, sessionViewModel::updateProfile, sessionViewModel::logout) { selectedProjectId = null; destination = Destination.Projects }
+            TaskFlowContent(destination, PaddingValues(), tasks, projects, archivedProjects, kanbanColumns, selectedProjectId, taskIdFromLink, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::reopenTask, taskListViewModel::moveTask, taskListViewModel::deleteTask, updateTask, taskListViewModel::refresh, syncing, pendingCount, syncError, taskListViewModel::dismissError, projectBusy, openProjectTasks, taskListViewModel::createProject, taskListViewModel::updateProject, taskListViewModel::archiveProject, taskListViewModel::restoreProject, TokenStore(context).serverUrl(), notificationsEnabled, profile, notificationSettings, sessionViewModel::updateProfile, sessionViewModel::logout) { selectedProjectId = null; destination = Destination.Projects }
         }
     } else {
         Scaffold(bottomBar = {
@@ -140,29 +147,33 @@ fun TaskFlowApp(sharedText: String? = null, taskIdFromLink: String? = null, veri
                     NavigationBarItem(selected = destination == item && selectedProjectId == null, onClick = { destination = item; selectedProjectId = null }, icon = { Icon(item.icon, item.label) }, label = { Text(item.label) })
                 }
             }
-        }) { padding -> TaskFlowContent(destination, padding, tasks, projects, archivedProjects, selectedProjectId, taskIdFromLink, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::deleteTask, updateTask, taskListViewModel::refresh, syncing, syncError, taskListViewModel::dismissError, projectBusy, openProjectTasks, taskListViewModel::createProject, taskListViewModel::updateProject, taskListViewModel::archiveProject, taskListViewModel::restoreProject, TokenStore(context).serverUrl(), notificationsEnabled, profile, notificationSettings, sessionViewModel::updateProfile, sessionViewModel::logout) { selectedProjectId = null; destination = Destination.Projects } }
+        }) { padding -> TaskFlowContent(destination, padding, tasks, projects, archivedProjects, kanbanColumns, selectedProjectId, taskIdFromLink, taskListViewModel::createInboxTask, taskListViewModel::completeTask, taskListViewModel::reopenTask, taskListViewModel::moveTask, taskListViewModel::deleteTask, updateTask, taskListViewModel::refresh, syncing, pendingCount, syncError, taskListViewModel::dismissError, projectBusy, openProjectTasks, taskListViewModel::createProject, taskListViewModel::updateProject, taskListViewModel::archiveProject, taskListViewModel::restoreProject, TokenStore(context).serverUrl(), notificationsEnabled, profile, notificationSettings, sessionViewModel::updateProfile, sessionViewModel::logout) { selectedProjectId = null; destination = Destination.Projects } }
     }
     conflicts.firstOrNull()?.let { conflict ->
         ConflictDialog(conflict, onKeepServer = { taskListViewModel.keepServerVersion(conflict.mutationId) }, onKeepLocal = { taskListViewModel.keepLocalVersion(conflict) })
+    }
+    if (conflicts.isEmpty()) projectConflicts.firstOrNull()?.let { conflict ->
+        ProjectConflictDialog(conflict, onKeepServer = { taskListViewModel.keepServerProjectVersion(conflict.mutationId) }, onKeepLocal = { taskListViewModel.keepLocalProjectVersion(conflict) })
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TaskFlowContent(destination: Destination, padding: PaddingValues, tasks: List<ru.taskflow.app.data.local.TaskEntity>, projects: List<ru.taskflow.app.data.local.ProjectEntity>, archivedProjects: List<ru.taskflow.app.data.local.ProjectEntity>, selectedProjectId: String?, taskIdFromLink: String?, onCreateInboxTask: (String, String, String?) -> Unit, onCompleteTask: (String) -> Unit, onDeleteTask: (String) -> Unit, onUpdateTask: (String, String, String, String, String?, String?, String?) -> Unit, onRefresh: () -> Unit, syncing: Boolean, syncError: String?, onDismissError: () -> Unit, projectBusy: Boolean, onOpenProjectTasks: (String) -> Unit, onCreateProject: (String, String) -> Unit, onUpdateProject: (ru.taskflow.app.data.local.ProjectEntity, String, String) -> Unit, onArchiveProject: (ru.taskflow.app.data.local.ProjectEntity) -> Unit, onRestoreProject: (ru.taskflow.app.data.local.ProjectEntity) -> Unit, serverUrl: String?, notificationsEnabled: Boolean, profile: ru.taskflow.app.ui.auth.ProfileUiState, onOpenNotificationSettings: () -> Unit, onSaveProfile: (String, String) -> Unit, onLogout: () -> Unit, onBackToProjects: () -> Unit) {
+private fun TaskFlowContent(destination: Destination, padding: PaddingValues, tasks: List<ru.taskflow.app.data.local.TaskEntity>, projects: List<ru.taskflow.app.data.local.ProjectEntity>, archivedProjects: List<ru.taskflow.app.data.local.ProjectEntity>, kanbanColumns: List<ru.taskflow.app.data.local.KanbanColumnEntity>, selectedProjectId: String?, taskIdFromLink: String?, onCreateInboxTask: (String, String, String?) -> Unit, onCompleteTask: (String) -> Unit, onReopenTask: (String) -> Unit, onMoveTask: (String, ru.taskflow.app.data.local.KanbanColumnEntity) -> Unit, onDeleteTask: (String) -> Unit, onUpdateTask: (String, ru.taskflow.app.data.TaskUpdate) -> Unit, onRefresh: () -> Unit, syncing: Boolean, pendingCount: Int, syncError: String?, onDismissError: () -> Unit, projectBusy: Boolean, onOpenProjectTasks: (String) -> Unit, onCreateProject: (String, String) -> Unit, onUpdateProject: (ru.taskflow.app.data.local.ProjectEntity, String, String) -> Unit, onArchiveProject: (ru.taskflow.app.data.local.ProjectEntity) -> Unit, onRestoreProject: (ru.taskflow.app.data.local.ProjectEntity) -> Unit, serverUrl: String?, notificationsEnabled: Boolean, profile: ru.taskflow.app.ui.auth.ProfileUiState, onOpenNotificationSettings: () -> Unit, onSaveProfile: (String, String) -> Unit, onLogout: () -> Unit, onBackToProjects: () -> Unit) {
     val selectedProject = projects.firstOrNull { it.id == selectedProjectId }
-    Scaffold(topBar = { TopAppBar(title = { Text(selectedProject?.name ?: destination.label, style = MaterialTheme.typography.titleLarge) }, navigationIcon = { if (selectedProject != null) androidx.compose.material3.IconButton(onClick = onBackToProjects) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Вернуться к проектам") } }) }) { contentPadding ->
+    Scaffold(topBar = { TopAppBar(title = { Text(selectedProject?.name ?: destination.label, style = MaterialTheme.typography.titleLarge) }, navigationIcon = { if (selectedProject != null) androidx.compose.material3.IconButton(onClick = onBackToProjects) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Вернуться к проектам") } }, actions = { if (pendingCount > 0) Text("$pendingCount ожидает", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = TaskFlowSpace.md)) }) }) { contentPadding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(contentPadding).padding(horizontal = TaskFlowSpace.md, vertical = TaskFlowSpace.sm),
             verticalArrangement = Arrangement.Top,
         ) {
             when (destination) {
-                Destination.Today -> TaskListContent(tasks.filter { it.scheduledDate == java.time.LocalDate.now().toString() }, projects, "На сегодня задач нет", "Запланируйте задачу, чтобы увидеть её здесь.", onComplete = onCompleteTask, onDelete = onDeleteTask, onUpdate = onUpdateTask, onRefresh = onRefresh, syncing = syncing, syncError = syncError, onDismissError = onDismissError)
+                Destination.Today -> TaskListContent(tasks.filter { it.scheduledDate == java.time.LocalDate.now().toString() }, projects, "На сегодня задач нет", "Запланируйте задачу, чтобы увидеть её здесь.", onComplete = onCompleteTask, onDelete = onDeleteTask, onUpdate = onUpdateTask, onRefresh = onRefresh, syncing = syncing, syncError = syncError, onDismissError = onDismissError, onReopen = onReopenTask)
                 Destination.Inbox -> if (selectedProject != null) {
-                    TaskListContent(tasks.filter { it.projectId == selectedProject.id }, projects, "В проекте пока нет задач", "Назначьте проект в редакторе задачи.", onComplete = onCompleteTask, onDelete = onDeleteTask, onUpdate = onUpdateTask, onRefresh = onRefresh, syncing = syncing, syncError = syncError, onDismissError = onDismissError)
+                    TaskListContent(tasks.filter { it.projectId == selectedProject.id }, projects, "В проекте пока нет задач", "Назначьте проект в редакторе задачи.", onComplete = onCompleteTask, onDelete = onDeleteTask, onUpdate = onUpdateTask, onRefresh = onRefresh, syncing = syncing, syncError = syncError, onDismissError = onDismissError, onReopen = onReopenTask)
                 } else {
-                    TaskListContent(tasks.filter { it.status == "inbox" }.filter { taskIdFromLink == null || it.id == taskIdFromLink }, projects, "Входящие пусты", if (taskIdFromLink == null) "Новые несортированные задачи появятся здесь." else "Задача из ссылки ещё не синхронизирована.", onCreateInboxTask, onCompleteTask, onDeleteTask, onUpdateTask, onRefresh, syncing, syncError, onDismissError)
+                    TaskListContent(tasks.filter { it.status == "inbox" }.filter { taskIdFromLink == null || it.id == taskIdFromLink }, projects, "Входящие пусты", if (taskIdFromLink == null) "Новые несортированные задачи появятся здесь." else "Задача из ссылки ещё не синхронизирована.", onCreateInboxTask, onCompleteTask, onDeleteTask, onUpdateTask, onRefresh, syncing, syncError, onDismissError, onReopenTask)
                 }
+                Destination.Board -> KanbanBoardContent(kanbanColumns, tasks, projects) { task, column -> onMoveTask(task.id, column) }
                 Destination.Projects -> ProjectListContent(projects, archivedProjects, tasks, projectBusy, onOpenProjectTasks, onCreateProject, onUpdateProject, onArchiveProject, onRestoreProject)
                 Destination.More -> MoreContent(serverUrl, BuildConfig.VERSION_NAME, syncing, syncError, notificationsEnabled, profile, onRefresh, onOpenNotificationSettings, onSaveProfile, onLogout)
             }

@@ -63,6 +63,7 @@ data class PendingMutationEntity(
     val taskId: String,
     val bodyJson: String?,
     val createdAt: Long,
+    val entityType: String = "task",
 )
 
 @Entity(tableName = "sync_state")
@@ -78,6 +79,17 @@ data class TaskConflictEntity(
     val localBodyJson: String,
     val serverTitle: String,
     val serverPriority: String,
+    val createdAt: Long,
+)
+
+@Entity(tableName = "project_conflicts")
+data class ProjectConflictEntity(
+    @PrimaryKey val mutationId: String,
+    val projectId: String,
+    val localBodyJson: String,
+    val serverName: String,
+    val serverColor: String,
+    val serverVersion: Int,
     val createdAt: Long,
 )
 
