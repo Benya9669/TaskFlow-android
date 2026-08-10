@@ -4,6 +4,8 @@ import ru.taskflow.app.data.remote.LoginRequest
 import ru.taskflow.app.data.remote.RegisterRequest
 import ru.taskflow.app.data.remote.VerifyEmailRequest
 import ru.taskflow.app.data.remote.TaskFlowApiFactory
+import ru.taskflow.app.data.remote.AccountUpdateRequest
+import ru.taskflow.app.data.remote.UserDto
 
 class SessionRepository(private val tokenStore: TokenStore) {
     fun hasSession(): Boolean = tokenStore.read() != null && tokenStore.serverUrl() != null
@@ -28,6 +30,19 @@ class SessionRepository(private val tokenStore: TokenStore) {
     }
 
     fun logout() = tokenStore.clear()
+
+    suspend fun profile(): UserDto {
+        val serverUrl = checkNotNull(tokenStore.serverUrl()) { "Сервер не настроен" }
+        return TaskFlowApiFactory(tokenStore).create(serverUrl).me().user
+    }
+
+    suspend fun updateProfile(displayName: String, timezone: String): UserDto {
+        require(displayName.trim().isNotEmpty()) { "Введите имя" }
+        require(timezone.trim() == "UTC" || timezone.trim().contains('/')) { "Укажите часовой пояс в формате Europe/Moscow" }
+        val serverUrl = checkNotNull(tokenStore.serverUrl()) { "Сервер не настроен" }
+        return TaskFlowApiFactory(tokenStore).create(serverUrl)
+            .updateAccount(AccountUpdateRequest(displayName.trim(), timezone.trim())).user
+    }
 
     private fun normalizeServerUrl(value: String): String {
         val base = value.trim().trimEnd('/')

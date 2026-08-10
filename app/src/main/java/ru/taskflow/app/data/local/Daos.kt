@@ -20,6 +20,10 @@ interface TaskDao {
 interface ProjectDao {
     @Query("SELECT * FROM projects WHERE deletedAt IS NULL AND archivedAt IS NULL ORDER BY name COLLATE NOCASE")
     fun observeActive(): Flow<List<ProjectEntity>>
+    @Query("SELECT * FROM projects WHERE deletedAt IS NULL AND archivedAt IS NOT NULL ORDER BY name COLLATE NOCASE")
+    fun observeArchived(): Flow<List<ProjectEntity>>
+    @Query("SELECT * FROM projects WHERE id = :id") suspend fun find(id: String): ProjectEntity?
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(project: ProjectEntity)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertAll(projects: List<ProjectEntity>)
 }
 

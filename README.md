@@ -4,7 +4,7 @@ Android client for TaskFlow, licensed under [Apache-2.0](LICENSE).
 
 ## Current status
 
-The `0.3.0-beta.1` foundation includes a Kotlin + Jetpack Compose shell, TaskFlow design system, encrypted session storage, Room cache, bounded pull sync, and offline task creation through a durable outbox.
+The `0.3.0-beta.1` foundation includes a Kotlin + Jetpack Compose shell, a web-aligned TaskFlow design system and adaptive launcher icon, encrypted session storage, Room cache, bounded pull sync, offline task changes through a durable outbox, task search/sort, project management, and profile settings. Project mutations currently require network access and use API version guards.
 
 Open the `android/` directory in Android Studio, allow Gradle to sync, then run the `app` configuration on an Android 8.0+ device or emulator. For terminal builds use the Embedded JDK from Android Studio.
 

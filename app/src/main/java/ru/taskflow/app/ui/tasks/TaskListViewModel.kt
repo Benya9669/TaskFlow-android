@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.taskflow.app.data.SyncRepository
 import ru.taskflow.app.data.TaskRepository
+import ru.taskflow.app.data.ProjectRepository
 import ru.taskflow.app.data.local.TaskEntity
 import ru.taskflow.app.data.local.TaskConflictEntity
 import ru.taskflow.app.data.remote.TaskFlowApiFactory
@@ -17,12 +18,17 @@ import ru.taskflow.app.data.session.TokenStore
 import ru.taskflow.app.data.sync.TaskSyncScheduler
 import ru.taskflow.app.data.reminders.TaskReminderWorker
 
-class TaskListViewModel(private val tasks: TaskRepository, private val sync: SyncRepository, private val appContext: Context) : ViewModel() {
+class TaskListViewModel(private val tasks: TaskRepository, private val projectsRepository: ProjectRepository, private val sync: SyncRepository, private val appContext: Context) : ViewModel() {
     val taskList = tasks.tasks.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val projects = tasks.projects.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val archivedProjects = tasks.archivedProjects.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val conflicts = tasks.conflicts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     private val _syncing = MutableStateFlow(false)
     val syncing = _syncing
+    private val _syncError = MutableStateFlow<String?>(null)
+    val syncError = _syncError
+    private val _projectBusy = MutableStateFlow(false)
+    val projectBusy = _projectBusy
 
     init { refresh() }
 
@@ -31,7 +37,27 @@ class TaskListViewModel(private val tasks: TaskRepository, private val sync: Syn
         viewModelScope.launch {
             _syncing.value = true
             runCatching { sync.pushAndPull() }
+                .onSuccess { _syncError.value = null }
+                .onFailure { _syncError.value = it.message ?: "Не удалось синхронизировать данные" }
             _syncing.value = false
+        }
+    }
+
+    fun dismissError() { _syncError.value = null }
+
+    fun createProject(name: String, color: String) = projectAction { projectsRepository.create(name, color) }
+    fun updateProject(project: ru.taskflow.app.data.local.ProjectEntity, name: String, color: String) = projectAction { projectsRepository.update(project, name, color) }
+    fun archiveProject(project: ru.taskflow.app.data.local.ProjectEntity) = projectAction { projectsRepository.archive(project) }
+    fun restoreProject(project: ru.taskflow.app.data.local.ProjectEntity) = projectAction { projectsRepository.restore(project) }
+
+    private fun projectAction(action: suspend () -> Unit) {
+        if (_projectBusy.value) return
+        viewModelScope.launch {
+            _projectBusy.value = true
+            runCatching { action() }
+                .onSuccess { _syncError.value = null }
+                .onFailure { _syncError.value = it.message ?: "Не удалось изменить проект" }
+            _projectBusy.value = false
         }
     }
 
@@ -72,6 +98,7 @@ class TaskListViewModelFactory(private val database: ru.taskflow.app.data.local.
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         val tasks = TaskRepository(database)
         val serverUrl = checkNotNull(tokenStore.serverUrl()) { "Сервер не настроен" }
-        return TaskListViewModel(tasks, SyncRepository(TaskFlowApiFactory(tokenStore).create(serverUrl), tasks), appContext) as T
+        val api = TaskFlowApiFactory(tokenStore).create(serverUrl)
+        return TaskListViewModel(tasks, ProjectRepository(api, database), SyncRepository(api, tasks), appContext) as T
     }
 }

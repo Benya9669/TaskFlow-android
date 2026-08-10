@@ -18,6 +18,7 @@ import java.util.UUID
 class TaskRepository(private val database: TaskFlowDatabase) {
     val tasks = database.taskDao().observeActive()
     val projects = database.projectDao().observeActive()
+    val archivedProjects = database.projectDao().observeArchived()
     val conflicts = database.taskConflictDao().observeAll()
 
     suspend fun syncCursor(): String = database.syncStateDao().cursor(SYNC_CURSOR_KEY) ?: FIRST_SYNC_CURSOR

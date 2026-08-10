@@ -21,8 +21,8 @@ Android-клиент развивается отдельно от `../web` и и
 - [x] Разделы «Сегодня», «Входящие», «Проекты», «Ещё».
 - [x] «Сегодня» показывает задачи на текущую дату; «Входящие» поддерживают быстрый offline create.
 - [x] Список задач: завершение, удаление, редактирование названия, описания, приоритета, проекта, даты и срока.
-- [x] Локальные фильтры по проекту, статусу и приоритету.
-- [x] Read-only список проектов с количеством задач.
+- [x] Локальные фильтры по проекту, статусу и приоритету, поиск и сортировка.
+- [x] Список проектов с количеством задач, active/archive tabs и CRUD через API.
 - [x] Empty, loading и error состояния для существующих экранов.
 - [x] Deep links `taskflow://task/{id}`, `taskflow://verify`, Android share text intent.
 - [x] Локальные reminders по `due_at` через WorkManager.
@@ -56,16 +56,16 @@ Android-клиент развивается отдельно от `../web` и и
 - [~] ISO-поля планирования и срока заменены Material date/time pickers с clear date; overdue presentation остаётся.
 - [ ] Улучшить быстрый ввод: autofocus, submit с IME, быстрый выбор приоритета/даты и snackbar с Undo после delete/complete.
 - [ ] Сделать task detail/editor полноценным bottom sheet или отдельным экраном с валидацией, сохранением и unsaved-change handling.
-- [ ] Реализовать поиск задач по title и description в локальной базе.
-- [ ] Сделать «Проекты» продуктовым экраном: active/archive tabs, task counts, цвет и переход к отфильтрованному списку.
-- [ ] Сделать «Ещё» рабочим разделом: профиль, сервер, sync status, последняя синхронизация, manual refresh, logout и app version.
-- [ ] Добавить понятные offline/sync/error индикаторы в app shell.
+- [x] Реализовать поиск задач по title и description в локальном состоянии и сортировку результатов.
+- [x] Сделать «Проекты» продуктовым экраном: active/archive tabs, task counts, цвет и переход к отфильтрованному списку.
+- [x] Сделать «Ещё» рабочим разделом: профиль, сервер, sync status, manual refresh, notification status, logout и app version.
+- [x] Добавить понятные sync/error индикаторы на рабочих экранах.
 
 ### Поддержка API и данных
 
-- [ ] Добавить в web API и Android create/update/archive/restore проектов с version guard и durable project outbox.
+- [~] Android использует стабильные create/update/archive/restore проектов с version guard; durable project outbox ещё не добавлен.
 - [ ] Добавить Room migration и conflict policy для project mutations.
-- [ ] Покрыть project API contract и Android E2E на чистом совместимом server tag.
+- [~] Project API contract покрыт Android-интеграционным тестом с MockWebServer; внешний E2E на чистом server tag остаётся.
 
 ### Gate 0.3.0
 
@@ -79,7 +79,7 @@ Android-клиент развивается отдельно от `../web` и и
 Цель: пользователь может вести основные сущности TaskFlow с Android без возврата в web для обычной работы.
 
 - [ ] Kanban board по статусам, перемещение задач между колонками и project filter.
-- [ ] Создание и редактирование проектов, archive/restore, выбор project color.
+- [x] Создание и редактирование проектов, archive/restore, выбор project color.
 - [ ] Subtasks и checklist items с offline sync.
 - [ ] Notes, folders и links с offline-first model.
 - [ ] Task discussions/messages и activity history.

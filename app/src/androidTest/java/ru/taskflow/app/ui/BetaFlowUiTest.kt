@@ -2,11 +2,16 @@ package ru.taskflow.app.ui
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -18,6 +23,7 @@ import ru.taskflow.app.ui.auth.LoginScreen
 import ru.taskflow.app.ui.auth.SessionUiState
 import ru.taskflow.app.ui.tasks.ConflictDialog
 import ru.taskflow.app.ui.tasks.TaskListContent
+import ru.taskflow.app.ui.projects.ProjectListContent
 
 @RunWith(AndroidJUnit4::class)
 class BetaFlowUiTest {
@@ -39,7 +45,7 @@ class BetaFlowUiTest {
         var createdTitle: String? = null
         compose.setContent {
             MaterialTheme {
-                TaskListContent(emptyList(), emptyList(), "Входящие пусты", "", { createdTitle = it }, {}, {}, { _, _, _, _, _, _, _ -> })
+                TaskListContent(emptyList(), emptyList(), "Входящие пусты", "", { title, _, _ -> createdTitle = title }, {}, {}, { _, _, _, _, _, _, _ -> })
             }
         }
         compose.onNodeWithText("Новая задача").performClick().performTextInput("Работать офлайн")
@@ -56,7 +62,7 @@ class BetaFlowUiTest {
                 TaskListContent(listOf(active, completed), emptyList(), "", "", onComplete = {}, onDelete = {}, onUpdate = { _, _, _, _, _, _, _ -> }, onRefresh = { refreshes++ })
             }
         }
-        compose.onNodeWithText("1 активных").assertIsDisplayed()
+        compose.onNodeWithText("1 активная задача").assertIsDisplayed()
         compose.onNodeWithText("Завершено (1)").assertIsDisplayed()
         compose.onNodeWithContentDescription("Синхронизировать").performClick()
         compose.runOnIdle { assertEquals(1, refreshes) }
@@ -71,7 +77,7 @@ class BetaFlowUiTest {
         }
         compose.onNodeWithContentDescription("Редактировать").performClick()
         compose.onNodeWithText("Запланировать").performClick()
-        compose.onNodeWithText("Готово").assertIsDisplayed()
+        compose.onAllNodesWithText("Готово").assertCountEquals(2)
     }
 
     @Test fun conflictDialogKeepsLocalVersion() {
@@ -89,5 +95,46 @@ class BetaFlowUiTest {
         compose.setContent { MaterialTheme { ConflictDialog(conflict, { resolution = "server" }, { resolution = "local" }) } }
         compose.onNodeWithText("Принять серверную").performClick()
         compose.runOnIdle { assertEquals("server", resolution) }
+    }
+
+    @Test fun taskSearchFiltersLocalResults() {
+        val alpha = TaskEntity("alpha", "owner", null, "column", "Alpha task", "", "inbox", "normal", null, null, null, 0, null, emptyList(), emptyList(), "", "2026-08-10T10:00:00Z", 1, null)
+        val beta = alpha.copy(id = "beta", title = "Beta task")
+        compose.setContent { MaterialTheme { TaskListContent(listOf(alpha, beta), emptyList(), "", "", onComplete = {}, onDelete = {}, onUpdate = { _, _, _, _, _, _, _ -> }) } }
+        compose.onNodeWithText("Поиск задач").performClick().performTextInput("Alpha")
+        compose.onNodeWithText("Alpha task").assertIsDisplayed()
+        compose.onAllNodesWithText("Beta task").assertCountEquals(0)
+    }
+
+    @Test fun taskDeleteRequiresConfirmation() {
+        var deleted: String? = null
+        val task = TaskEntity("delete-me", "owner", null, "column", "Удалить после подтверждения", "", "inbox", "normal", null, null, null, 0, null, emptyList(), emptyList(), "", "", 1, null)
+        compose.setContent { MaterialTheme { TaskListContent(listOf(task), emptyList(), "", "", onComplete = {}, onDelete = { deleted = it }, onUpdate = { _, _, _, _, _, _, _ -> }) } }
+        compose.onNodeWithContentDescription("Удалить").performClick()
+        compose.runOnIdle { assertEquals(null, deleted) }
+        compose.onNodeWithText("Удалить").performClick()
+        compose.runOnIdle { assertEquals("delete-me", deleted) }
+    }
+
+    @Test fun projectCreateDialogReturnsNameAndColor() {
+        var created: Pair<String, String>? = null
+        compose.setContent {
+            MaterialTheme {
+                ProjectListContent(emptyList(), emptyList(), emptyList(), false, {}, { name, color -> created = name to color }, { _, _, _ -> }, {}, {})
+            }
+        }
+        compose.onNodeWithText("Создать проект").performClick()
+        compose.onNodeWithText("Название").performClick().performTextInput("Мобильный проект")
+        compose.onNodeWithText("Сохранить").performClick()
+        compose.runOnIdle { assertEquals("Мобильный проект", created?.first) }
+    }
+
+    @Test fun loginRemainsUsableWithLargeFontScale() {
+        compose.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = 2f)) {
+                MaterialTheme { LoginScreen(SessionUiState(isSignedIn = false), { _, _, _ -> }, { _, _, _, _ -> }, {}) }
+            }
+        }
+        compose.onNodeWithText("URL сервера").assertIsDisplayed()
     }
 }

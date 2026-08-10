@@ -9,10 +9,15 @@ import ru.taskflow.app.data.session.SessionRepository
 import ru.taskflow.app.data.session.TokenStore
 
 data class SessionUiState(val isSignedIn: Boolean, val isLoading: Boolean = false, val error: String? = null, val verificationEmail: String? = null)
+data class ProfileUiState(val displayName: String = "", val email: String = "", val timezone: String = "", val loading: Boolean = false, val saving: Boolean = false, val error: String? = null)
 
 class SessionViewModel(private val repository: SessionRepository) : ViewModel() {
     private val _state = MutableStateFlow(SessionUiState(repository.hasSession()))
     val state = _state.asStateFlow()
+    private val _profile = MutableStateFlow(ProfileUiState())
+    val profile = _profile.asStateFlow()
+
+    init { if (repository.hasSession()) loadProfile() }
 
     fun login(serverUrl: String, email: String, password: String) {
         if (email.isBlank() || password.isBlank()) {
@@ -22,7 +27,7 @@ class SessionViewModel(private val repository: SessionRepository) : ViewModel() 
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             runCatching { repository.login(serverUrl, email, password) }
-                .onSuccess { _state.value = SessionUiState(isSignedIn = true) }
+                .onSuccess { _state.value = SessionUiState(isSignedIn = true); loadProfile() }
                 .onFailure { _state.value = SessionUiState(isSignedIn = false, error = it.message ?: "Не удалось войти") }
         }
     }
@@ -50,12 +55,32 @@ class SessionViewModel(private val repository: SessionRepository) : ViewModel() 
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             runCatching { repository.verifyEmail(serverUrl, token) }
-                .onSuccess { _state.value = SessionUiState(isSignedIn = true) }
+                .onSuccess { _state.value = SessionUiState(isSignedIn = true); loadProfile() }
                 .onFailure { _state.value = SessionUiState(isSignedIn = false, error = it.message ?: "Не удалось подтвердить email") }
         }
     }
 
-    fun logout() { repository.logout(); _state.value = SessionUiState(isSignedIn = false) }
+    fun loadProfile() {
+        if (!_state.value.isSignedIn || _profile.value.loading) return
+        viewModelScope.launch {
+            _profile.value = _profile.value.copy(loading = true, error = null)
+            runCatching { repository.profile() }
+                .onSuccess { _profile.value = ProfileUiState(it.displayName, it.email, it.timezone) }
+                .onFailure { _profile.value = _profile.value.copy(loading = false, error = it.message ?: "Не удалось загрузить профиль") }
+        }
+    }
+
+    fun updateProfile(displayName: String, timezone: String) {
+        if (_profile.value.saving) return
+        viewModelScope.launch {
+            _profile.value = _profile.value.copy(saving = true, error = null)
+            runCatching { repository.updateProfile(displayName, timezone) }
+                .onSuccess { _profile.value = ProfileUiState(it.displayName, it.email, it.timezone) }
+                .onFailure { _profile.value = _profile.value.copy(saving = false, error = it.message ?: "Не удалось сохранить профиль") }
+        }
+    }
+
+    fun logout() { repository.logout(); _profile.value = ProfileUiState(); _state.value = SessionUiState(isSignedIn = false) }
 }
 
 class SessionViewModelFactory(private val tokenStore: TokenStore) : androidx.lifecycle.ViewModelProvider.Factory {
