@@ -48,15 +48,15 @@ class KanbanRepositoryTest {
         val created = checkNotNull(database.kanbanColumnDao().find("one"))
         assertEquals("/api/v1/kanban/columns", server.takeRequest().path)
 
-        server.enqueue(json(columnResponse("one", "Работа", "#7c3aed", "doing", 0, 2)))
-        repository.update(created, "Работа", "#7C3AED", "doing")
+        server.enqueue(json(columnResponse("one", "Работа", "#7c3aed", "in_progress", 0, 2)))
+        repository.update(created, "Работа", "#7C3AED", "in_progress")
         val updateRequest = server.takeRequest()
         assertEquals("/api/v1/kanban/columns/one", updateRequest.path)
         assert(updateRequest.body.readUtf8().contains("\"expected_version\":1"))
 
         val second = column("two", "Готово", "done", 1, 1)
         database.kanbanColumnDao().upsert(second)
-        server.enqueue(json("""{"columns":[${columnJson("two", "Готово", "#16a34a", "done", 0, 2)},${columnJson("one", "Работа", "#7c3aed", "doing", 1, 3)}]}"""))
+        server.enqueue(json("""{"columns":[${columnJson("two", "Готово", "#16a34a", "done", 0, 2)},${columnJson("one", "Работа", "#7c3aed", "in_progress", 1, 3)}]}"""))
         repository.reorder(listOf(second, checkNotNull(database.kanbanColumnDao().find("one"))))
         val reorderRequest = server.takeRequest()
         assertEquals("/api/v1/kanban/columns/reorder", reorderRequest.path)

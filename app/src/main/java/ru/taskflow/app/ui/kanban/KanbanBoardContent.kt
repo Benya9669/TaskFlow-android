@@ -8,6 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.draganddrop.dragAndDropSource
 import androidx.compose.foundation.draganddrop.dragAndDropTarget
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,11 +50,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draganddrop.DragAndDropEvent
@@ -62,6 +67,9 @@ import androidx.compose.ui.draganddrop.DragAndDropTransferData
 import androidx.compose.ui.draganddrop.mimeTypes
 import androidx.compose.ui.draganddrop.toAndroidDragEvent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -73,6 +81,7 @@ import ru.taskflow.app.ui.components.EmptyState
 import ru.taskflow.app.ui.theme.TaskFlowSpace
 import java.time.LocalDate
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun KanbanBoardContent(
     columns: List<KanbanColumnEntity>,
@@ -93,6 +102,44 @@ fun KanbanBoardContent(
     var projectFilter by rememberSaveable { mutableStateOf<String?>(null) }
     var quickAddColumn by remember { mutableStateOf<KanbanColumnEntity?>(null) }
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
+    val boardScrollState = rememberScrollState()
+    val edgeThresholdPx = with(LocalDensity.current) { 72.dp.toPx() }
+    val autoScrollStepPx = with(LocalDensity.current) { 12.dp.toPx() }
+    var boardViewportStart by remember { mutableFloatStateOf(0f) }
+    var boardViewportEnd by remember { mutableFloatStateOf(0f) }
+    var autoScrollDirection by remember { mutableIntStateOf(0) }
+    val updateAutoScroll: (DragAndDropEvent) -> Unit = remember(boardScrollState, edgeThresholdPx) {
+        { event ->
+            autoScrollDirection = kanbanAutoScrollDirection(
+                pointerX = event.toAndroidDragEvent().x,
+                viewportStart = boardViewportStart,
+                viewportEnd = boardViewportEnd,
+                edgeThreshold = edgeThresholdPx,
+                canScrollBackward = boardScrollState.value > 0,
+                canScrollForward = boardScrollState.value < boardScrollState.maxValue,
+            )
+        }
+    }
+    val stopAutoScroll: () -> Unit = remember { { autoScrollDirection = 0 } }
+    val boardDragTarget = remember(boardScrollState, edgeThresholdPx) {
+        object : DragAndDropTarget {
+            override fun onStarted(event: DragAndDropEvent) = updateAutoScroll(event)
+            override fun onMoved(event: DragAndDropEvent) = updateAutoScroll(event)
+            override fun onExited(event: DragAndDropEvent) = stopAutoScroll()
+            override fun onEnded(event: DragAndDropEvent) = stopAutoScroll()
+            override fun onDrop(event: DragAndDropEvent): Boolean {
+                stopAutoScroll()
+                return false
+            }
+        }
+    }
+    LaunchedEffect(autoScrollDirection, boardScrollState) {
+        while (autoScrollDirection != 0) {
+            withFrameNanos { }
+            val consumed = boardScrollState.scrollBy(autoScrollStepPx * autoScrollDirection)
+            if (consumed == 0f) autoScrollDirection = 0
+        }
+    }
     val visibleTasks = tasks.filter { projectFilter == null || it.projectId == projectFilter }
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(TaskFlowSpace.md)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -123,7 +170,18 @@ fun KanbanBoardContent(
             OutlinedButton(onClick = onRefresh, enabled = !syncing, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Повторить") }
         } else {
             Row(
-                modifier = Modifier.fillMaxSize().horizontalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onGloballyPositioned {
+                        val bounds = it.boundsInRoot()
+                        boardViewportStart = bounds.left
+                        boardViewportEnd = bounds.right
+                    }
+                    .dragAndDropTarget(
+                        shouldStartDragAndDrop = { it.mimeTypes().contains(ClipDescription.MIMETYPE_TEXT_PLAIN) },
+                        target = boardDragTarget,
+                    )
+                    .horizontalScroll(boardScrollState),
                 horizontalArrangement = Arrangement.spacedBy(TaskFlowSpace.md),
             ) {
                 columns.sortedBy(KanbanColumnEntity::position).forEach { column ->
@@ -133,6 +191,8 @@ fun KanbanBoardContent(
                         columns = columns,
                         onAdd = { quickAddColumn = column },
                         onMove = onMove,
+                        onDragMoved = updateAutoScroll,
+                        onDragEnded = stopAutoScroll,
                     )
                 }
             }
@@ -157,15 +217,19 @@ private fun KanbanColumn(
     columns: List<KanbanColumnEntity>,
     onAdd: () -> Unit,
     onMove: (String, KanbanColumnEntity, String?) -> Unit,
+    onDragMoved: (DragAndDropEvent) -> Unit,
+    onDragEnded: () -> Unit,
 ) {
     var dropActive by remember(column.id) { mutableStateOf(false) }
-    val target = remember(column.id, onMove) {
+    val target = remember(column.id, onMove, onDragMoved, onDragEnded) {
         object : DragAndDropTarget {
-            override fun onEntered(event: DragAndDropEvent) { dropActive = true }
-            override fun onExited(event: DragAndDropEvent) { dropActive = false }
-            override fun onEnded(event: DragAndDropEvent) { dropActive = false }
+            override fun onEntered(event: DragAndDropEvent) { dropActive = true; onDragMoved(event) }
+            override fun onMoved(event: DragAndDropEvent) = onDragMoved(event)
+            override fun onExited(event: DragAndDropEvent) { dropActive = false; onDragEnded() }
+            override fun onEnded(event: DragAndDropEvent) { dropActive = false; onDragEnded() }
             override fun onDrop(event: DragAndDropEvent): Boolean {
                 dropActive = false
+                onDragEnded()
                 val taskId = event.taskId() ?: return false
                 onMove(taskId, column, null)
                 return true
@@ -197,7 +261,7 @@ private fun KanbanColumn(
             } else {
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(TaskFlowSpace.sm)) {
                     items(tasks, key = TaskEntity::id) { task ->
-                        KanbanTaskCard(task, column, columns.filter { it.id != column.id }, onMove)
+                        KanbanTaskCard(task, column, columns.filter { it.id != column.id }, onMove, onDragMoved, onDragEnded)
                     }
                 }
             }
@@ -212,16 +276,20 @@ private fun KanbanTaskCard(
     column: KanbanColumnEntity,
     destinations: List<KanbanColumnEntity>,
     onMove: (String, KanbanColumnEntity, String?) -> Unit,
+    onDragMoved: (DragAndDropEvent) -> Unit,
+    onDragEnded: () -> Unit,
 ) {
     var menuOpen by rememberSaveable(task.id) { mutableStateOf(false) }
     var dropActive by remember(task.id) { mutableStateOf(false) }
-    val target = remember(task.id, column.id, onMove) {
+    val target = remember(task.id, column.id, onMove, onDragMoved, onDragEnded) {
         object : DragAndDropTarget {
-            override fun onEntered(event: DragAndDropEvent) { if (event.taskId() != task.id) dropActive = true }
-            override fun onExited(event: DragAndDropEvent) { dropActive = false }
-            override fun onEnded(event: DragAndDropEvent) { dropActive = false }
+            override fun onEntered(event: DragAndDropEvent) { if (event.taskId() != task.id) dropActive = true; onDragMoved(event) }
+            override fun onMoved(event: DragAndDropEvent) = onDragMoved(event)
+            override fun onExited(event: DragAndDropEvent) { dropActive = false; onDragEnded() }
+            override fun onEnded(event: DragAndDropEvent) { dropActive = false; onDragEnded() }
             override fun onDrop(event: DragAndDropEvent): Boolean {
                 dropActive = false
+                onDragEnded()
                 val draggedId = event.taskId() ?: return false
                 if (draggedId == task.id) return false
                 onMove(draggedId, column, task.id)
@@ -393,12 +461,26 @@ private fun DeleteColumnDialog(column: KanbanColumnEntity, destinations: List<Ka
 }
 
 private fun DragAndDropEvent.taskId(): String? = toAndroidDragEvent().clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
+
+internal fun kanbanAutoScrollDirection(
+    pointerX: Float,
+    viewportStart: Float,
+    viewportEnd: Float,
+    edgeThreshold: Float,
+    canScrollBackward: Boolean,
+    canScrollForward: Boolean,
+): Int = when {
+    viewportEnd <= viewportStart -> 0
+    pointerX <= viewportStart + edgeThreshold && canScrollBackward -> -1
+    pointerX >= viewportEnd - edgeThreshold && canScrollForward -> 1
+    else -> 0
+}
 private fun parseColor(value: String) = runCatching { Color(android.graphics.Color.parseColor(value)) }.getOrDefault(Color.Gray)
 private fun priorityColor(priority: String) = when (priority) { "urgent" -> Color(0xFFB3261E); "high" -> Color(0xFFB85C00); "low" -> Color(0xFF2E7D32); else -> Color(0xFF6D5DFC) }
 private fun priorityLabel(priority: String) = when (priority) { "low" -> "Низкий"; "high" -> "Высокий"; "urgent" -> "Срочный"; else -> "Обычный" }
-private fun statusLabel(status: String) = when (status) { "inbox" -> "Входящие"; "doing" -> "В работе"; "done" -> "Готово"; else -> "Запланировано" }
+private fun statusLabel(status: String) = when (status) { "inbox" -> "Входящие"; "in_progress" -> "В работе"; "done" -> "Готово"; else -> "Запланировано" }
 
 private const val DRAG_LABEL = "taskflow-kanban-task"
 private val COLOR = Regex("^#[0-9a-fA-F]{6}$")
 private val COLORS = listOf("#6D5DFC", "#2563EB", "#0F9D7A", "#D97706", "#DC2626", "#7C3AED")
-private val STATUSES = listOf("inbox", "todo", "doing", "done")
+private val STATUSES = listOf("inbox", "todo", "in_progress", "done")

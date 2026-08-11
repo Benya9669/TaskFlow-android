@@ -30,7 +30,7 @@ class SyncRepository(private val api: TaskFlowApi, private val tasks: TaskReposi
                             mutation.id,
                             mutation.operation,
                             mutation.taskId.takeIf { mutation.entityType == "task" },
-                            mutation.bodyJson?.let(mapAdapter::fromJson),
+                            mutation.bodyJson?.let(mapAdapter::fromJson)?.let(::normalizeJsonNumbers) as? Map<String, Any?>,
                             mutation.entityType,
                             mutation.taskId.takeIf { mutation.entityType == "project" },
                         )
@@ -62,4 +62,15 @@ class SyncRepository(private val api: TaskFlowApi, private val tasks: TaskReposi
         val taskAdapter = moshi.adapter(ru.taskflow.app.data.remote.TaskDto::class.java)
         val projectAdapter = moshi.adapter(ru.taskflow.app.data.remote.ProjectDto::class.java)
     }
+}
+
+private fun normalizeJsonNumbers(value: Any?): Any? = when (value) {
+    is Double -> when {
+        !value.isFinite() || value % 1.0 != 0.0 -> value
+        value in Int.MIN_VALUE.toDouble()..Int.MAX_VALUE.toDouble() -> value.toInt()
+        else -> value.toLong()
+    }
+    is List<*> -> value.map(::normalizeJsonNumbers)
+    is Map<*, *> -> value.entries.associate { (key, item) -> key.toString() to normalizeJsonNumbers(item) }
+    else -> value
 }

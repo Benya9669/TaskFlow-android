@@ -1,6 +1,6 @@
 # TaskFlow Android Roadmap
 
-Android-клиент развивается отдельно от `../web` и использует стабильный API `/api/v1`. Текущий продуктовый статус: **0.3.0-beta.3**. Технический offline foundation и test gate готовы, но функциональное покрытие ещё не соответствует публичной beta.
+Android-клиент развивается отдельно от `../web` и использует стабильный API `/api/v1`. Текущий продуктовый статус: **0.3.0-beta.4**. Технический offline foundation и test gate готовы, но функциональное покрытие ещё не соответствует публичной beta.
 
 Обозначения: `[x]` готово и проверено, `[~]` реализовано частично, `[ ]` запланировано.
 
@@ -44,7 +44,7 @@ Android-клиент развивается отдельно от `../web` и и
 - [x] Compose UI tests: login, offline inbox create, обе ветки conflict dialog.
 - [x] Проверены light/dark theme, phone и wide layout на AVD.
 - [x] Проверены Android login, pull, task mutation и project mutation с production web `v0.3.0`.
-- [x] Debug APK `0.3.0-beta.3` собирается и запускается; tracked secrets и ключи не найдены.
+- [x] Debug APK `0.3.0-beta.4` собирается и запускается; tracked secrets и ключи не найдены.
 
 ## 0.3.0 — ежедневный task flow
 
@@ -78,7 +78,7 @@ Android-клиент развивается отдельно от `../web` и и
 
 Цель: пользователь может вести основные сущности TaskFlow с Android без возврата в web для обычной работы.
 
-- [x] Kanban board по колонкам, project filter, long-press drag-and-drop, ручной порядок, quick add и безопасное управление колонками.
+- [x] Kanban board по колонкам, project filter, long-press drag-and-drop с автопрокруткой у краёв, ручной порядок, quick add и безопасное управление колонками.
 - [x] Создание и редактирование проектов, archive/restore, выбор project color.
 - [ ] Subtasks и checklist items с offline sync.
 - [ ] Notes, folders и links с offline-first model.

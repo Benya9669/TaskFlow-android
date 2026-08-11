@@ -112,6 +112,30 @@ class SyncRepositoryTest {
         assertEquals(task.id, database.taskDao().find(task.id)?.id)
     }
 
+    @Test fun mutationJsonKeepsIntegralApiFieldsAsIntegers() = runBlocking {
+        val column = KanbanColumnEntity("column", "owner", "Inbox", "#000000", "inbox", 0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", 1, null)
+        database.kanbanColumnDao().upsertAll(listOf(column))
+        val task = task("integer-fields")
+        repository.applySyncPage(listOf(task), emptyList(), listOf(KanbanColumnDto("column", "owner", "Inbox", "#000000", "inbox", 0, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", 1, null)), "cursor")
+        repository.updateLocalTask(task.id, TaskUpdate(task.title, task.priority, task.description, null, null, "2026-01-02T09:00:00Z", 30, emptyList(), listOf(5, 15)))
+        val api = object : ProjectAwareTestApi() {
+            override suspend fun sendMutations(request: MutationBatch): MutationBatchResponse {
+                val mutation = request.mutations.single()
+                assertEquals(1, mutation.body?.get("expected_version"))
+                assertEquals(30, mutation.body?.get("estimated_minutes"))
+                assertEquals(listOf(5, 15), mutation.body?.get("reminder_offsets"))
+                return MutationBatchResponse(listOf(MutationResultDto(mutation.id, 200, emptyMap())))
+            }
+            override suspend fun sync(since: String, cursor: String?, snapshot: String?, limit: Int) = page("snapshot", "cursor-2", false, null, emptyList())
+            override suspend fun login(request: ru.taskflow.app.data.remote.LoginRequest) = throw UnsupportedOperationException()
+            override suspend fun register(request: ru.taskflow.app.data.remote.RegisterRequest) = throw UnsupportedOperationException()
+            override suspend fun verifyEmail(request: ru.taskflow.app.data.remote.VerifyEmailRequest) = throw UnsupportedOperationException()
+            override suspend fun refresh(request: RefreshRequest) = throw UnsupportedOperationException()
+        }
+        SyncRepository(api, repository).pushAndPull()
+        assertEquals(emptyList<Any>(), repository.pendingMutations(10))
+    }
+
 
     private fun task(id: String) = TaskDto(id, "owner", null, "column", id, "", "inbox", "normal", null, null, null, 0, null, emptyList(), emptyList(), "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", 1, null)
     private fun page(snapshot: String, cursor: String, hasMore: Boolean, next: String?, tasks: List<TaskDto>) = SyncResponse(snapshot, cursor, hasMore, next, tasks, emptyList<ProjectDto>(), emptyList<KanbanColumnDto>())

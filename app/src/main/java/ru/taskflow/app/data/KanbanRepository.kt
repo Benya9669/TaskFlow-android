@@ -43,7 +43,7 @@ class KanbanRepository(
 
     private companion object {
         val COLOR = Regex("^#[0-9a-fA-F]{6}$")
-        val STATUSES = setOf("inbox", "todo", "doing", "done")
+        val STATUSES = setOf("inbox", "todo", "in_progress", "done")
     }
 }
 

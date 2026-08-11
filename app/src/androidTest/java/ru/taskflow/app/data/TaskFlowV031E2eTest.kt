@@ -58,7 +58,7 @@ class TaskFlowV031E2eTest {
         assertEquals(projectId, project.id)
 
         val inbox = checkNotNull(database.kanbanColumnDao().inbox())
-        val doing = checkNotNull(database.kanbanColumnDao().byStatus("doing"))
+        val doing = checkNotNull(database.kanbanColumnDao().byStatus("in_progress"))
         val firstCard = repository.createKanbanTask(inbox, "Android v0.3.1 E2E first", projectId)
         val secondCard = repository.createKanbanTask(inbox, "Android v0.3.1 E2E second", projectId)
         sync.pushAndPull()

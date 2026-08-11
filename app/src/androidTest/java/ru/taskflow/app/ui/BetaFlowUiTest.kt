@@ -158,7 +158,7 @@ class BetaFlowUiTest {
     }
 
     @Test fun kanbanQuickAddCreatesTaskInSelectedColumn() {
-        val doing = KanbanColumnEntity("doing", "owner", "В работе", "#7C3AED", "doing", 0, "", "", 1, null)
+        val doing = KanbanColumnEntity("doing", "owner", "В работе", "#7C3AED", "in_progress", 0, "", "", 1, null)
         var created: Pair<String, String>? = null
         compose.setContent {
             MaterialTheme {
